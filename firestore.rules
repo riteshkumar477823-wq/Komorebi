@@ -1,0 +1,77 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required)
+//   - displayName: string
+//   - email: string (required)
+//   - streakCount: number
+//   - lastActiveDate: timestamp
+//   - dailyGoalMet: boolean
+//   - xp: number
+//
+// Collection: users/{userId}/vocabularies
+// Document ID: {vocabId}
+// Fields:
+//   - uid: string (required)
+//   - japanese: string (required, max 100)
+//   - meaning: string (required, max 500)
+//   - romaji: string (max 100)
+//   - createdAt: timestamp (required)
+//   - mastery: number (0-5)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             (!('streakCount' in data) || data.streakCount is number) &&
+             (!('xp' in data) || data.xp is number);
+    }
+
+    function isValidVocab(data) {
+      return data.keys().hasAll(['uid', 'japanese', 'meaning', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.japanese is string && data.japanese.size() <= 100 &&
+             data.meaning is string && data.meaning.size() <= 500 &&
+             (!('romaji' in data) || (data.romaji is string && data.romaji.size() <= 100)) &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+
+      match /vocabularies/{vocabId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidVocab(request.resource.data);
+        allow update: if isOwner(userId) && isValidVocab(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

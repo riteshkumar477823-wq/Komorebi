@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and learning progress",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "streakCount": { "type": "integer" },
+        "lastActiveDate": { "type": "string", "format": "date-time" },
+        "dailyGoalMet": { "type": "boolean" },
+        "xp": { "type": "integer" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Vocabulary": {
+      "title": "Vocabulary",
+      "description": "Japanese words added by the user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "japanese": { "type": "string" },
+        "meaning": { "type": "string" },
+        "romaji": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "mastery": { "type": "integer" }
+      },
+      "required": ["uid", "japanese", "meaning"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/vocabularies/{vocabId}": {
+      "schema": "Vocabulary",
+      "description": "User's personal vocabulary list"
+    }
+  }
+}
