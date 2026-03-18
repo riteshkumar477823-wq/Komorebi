@@ -58,21 +58,72 @@ function cn(...inputs: ClassValue[]) {
 // --- Hooks ---
 const useTTS = () => {
   const [loading, setLoading] = useState(false);
+  const [hasJaVoice, setHasJaVoice] = useState<boolean | null>(null);
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
+  const [mode, setMode] = useState<'native' | 'gemini'>(() => {
+    return (localStorage.getItem('komorebi_tts_mode') as 'native' | 'gemini') || 'native';
+  });
 
-  const play = async (text: string) => {
-    if (loading || !text) return;
-    setLoading(true);
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        console.error("Gemini API Key is missing");
-        return;
+  // Pre-warm voices
+  useEffect(() => {
+    const checkVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const jaVoice = voices.find(v => v.lang.toLowerCase().includes('ja') || v.lang.toLowerCase().includes('jp'));
+      setHasJaVoice(!!jaVoice);
+    };
+
+    checkVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = checkVoices;
+    }
+  }, []);
+
+  const setTTSMode = (newMode: 'native' | 'gemini') => {
+    setMode(newMode);
+    localStorage.setItem('komorebi_tts_mode', newMode);
+    if (newMode === 'gemini') setQuotaExhausted(false);
+  };
+
+  const playNative = (text: string) => {
+    return new Promise<void>((resolve, reject) => {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      utterance.rate = 0.85;
+
+      const voices = window.speechSynthesis.getVoices();
+      const jaVoice = voices.find(v => v.lang.toLowerCase().includes('ja')) || 
+                      voices.find(v => v.lang.toLowerCase().includes('jp'));
+      
+      if (jaVoice) {
+        utterance.voice = jaVoice;
+      } else {
+        console.warn("No Japanese voice found on this device. Using default.");
       }
 
+      utterance.onstart = () => setLoading(true);
+      utterance.onend = () => {
+        setLoading(false);
+        resolve();
+      };
+      utterance.onerror = (e) => {
+        setLoading(false);
+        reject(e);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    });
+  };
+
+  const playGemini = async (text: string) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API Key is missing");
+    
+    try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say clearly in Japanese: ${text}` }] }],
+        contents: [{ parts: [{ text: `Say in Japanese: ${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -85,49 +136,52 @@ const useTTS = () => {
 
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        const audioContext = new AudioContextClass();
-        
-        // Ensure audio context is resumed (browser requirement)
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-
-        const audioData = atob(base64Audio);
-        const arrayBuffer = new ArrayBuffer(audioData.length);
-        const view = new Uint8Array(arrayBuffer);
-        for (let i = 0; i < audioData.length; i++) {
-          view[i] = audioData.charCodeAt(i);
-        }
-
-        // The model returns raw PCM 16-bit mono at 24kHz
-        const int16Data = new Int16Array(arrayBuffer);
-        const float32Data = new Float32Array(int16Data.length);
-        for (let i = 0; i < int16Data.length; i++) {
-          float32Data[i] = int16Data[i] / 32768.0;
-        }
-
-        const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
-        audioBuffer.getChannelData(0).set(float32Data);
-
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        
-        source.onended = () => {
-          audioContext.close();
-        };
-
-        source.start();
+        const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+        return new Promise<void>((resolve, reject) => {
+          audio.onplay = () => setLoading(true);
+          audio.onended = () => {
+            setLoading(false);
+            resolve();
+          };
+          audio.onerror = (e) => {
+            setLoading(false);
+            reject(e);
+          };
+          audio.play().catch(reject);
+        });
+      } else {
+        throw new Error("No audio content received from Gemini TTS");
       }
-    } catch (error) {
-      console.error("TTS Error:", error);
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      // Check for quota exhaustion (429)
+      if (error?.message?.includes('429') || error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('quota')) {
+        setQuotaExhausted(true);
+        setMode('native'); // Auto-switch to native
+      }
+      throw error;
     }
   };
 
-  return { play, loading };
+  const play = async (text: string) => {
+    if (loading || !text) return;
+    
+    try {
+      if (mode === 'gemini' && !quotaExhausted) {
+        await playGemini(text);
+      } else {
+        await playNative(text);
+      }
+    } catch (error) {
+      console.error("TTS Error:", error);
+      // Fallback to native if gemini fails
+      if (mode !== 'native') {
+        console.log("Falling back to native TTS...");
+        await playNative(text);
+      }
+    }
+  };
+
+  return { play, loading, mode, setTTSMode, hasJaVoice, quotaExhausted };
 };
 
 // --- Contexts ---
@@ -148,6 +202,33 @@ const AuthContext = createContext<{
   setDemoMode: () => {},
   isDemo: false,
 });
+
+const TTSContext = createContext<{
+  play: (text: string) => Promise<void>;
+  loading: boolean;
+  mode: 'native' | 'gemini';
+  setTTSMode: (mode: 'native' | 'gemini') => void;
+  hasJaVoice: boolean | null;
+  quotaExhausted: boolean;
+}>({
+  play: async () => {},
+  loading: false,
+  mode: 'native',
+  setTTSMode: () => {},
+  hasJaVoice: null,
+  quotaExhausted: false,
+});
+
+const TTSProvider = ({ children }: { children: React.ReactNode }) => {
+  const tts = useTTS();
+  return (
+    <TTSContext.Provider value={tts}>
+      {children}
+    </TTSContext.Provider>
+  );
+};
+
+const useTTSContext = () => useContext(TTSContext);
 
 // --- Error Handling ---
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -256,7 +337,7 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
   const { profile } = useContext(AuthContext);
   const streak = profile?.streakCount || 0;
   const goalMet = profile?.dailyGoalMet || false;
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading, mode, setTTSMode, hasJaVoice } = useTTSContext();
 
   const wordOfTheDay = vocab.length > 0 ? vocab[Math.floor(Math.random() * vocab.length)] : null;
 
@@ -267,16 +348,51 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
           <h2 className="text-4xl font-editorial italic text-stone-900 mb-1">
             Okaeri, <span className="font-medium">{profile?.displayName?.split(' ')[0]}</span>
           </h2>
-          <p className="text-stone-500 font-serif italic">The path to mastery is paved with daily steps.</p>
+          <div className="flex items-center gap-2">
+            <p className="text-stone-500 font-serif italic">The path to mastery is paved with daily steps.</p>
+            {hasJaVoice === false && (
+              <a 
+                href="https://support.google.com/chrome/answer/95414" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="px-2 py-0.5 bg-red-50 text-red-500 text-[10px] font-bold rounded-full uppercase tracking-tighter hover:bg-red-100 transition-colors"
+              >
+                Fix: No Japanese Voice
+              </a>
+            )}
+            {hasJaVoice === true && (
+              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-500 text-[10px] font-bold rounded-full uppercase tracking-tighter">
+                Unlimited Voice Ready
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 p-1 bg-white rounded-full border border-stone-100 shadow-sm">
+            <button 
+              onClick={() => setTTSMode('native')}
+              className={cn(
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
+                mode === 'native' ? "bg-stone-900 text-white" : "text-stone-400 hover:text-stone-600"
+              )}
+              title="Free, unlimited usage using your device's built-in voice"
+            >
+              Built-in
+            </button>
+            <button 
+              onClick={() => setTTSMode('gemini')}
+              className={cn(
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
+                mode === 'gemini' ? "bg-stone-900 text-white" : "text-stone-400 hover:text-stone-600"
+              )}
+              title="High-quality AI Voice powered by Gemini"
+            >
+              AI Voice
+            </button>
+          </div>
           <div className="flex items-center gap-3 px-6 py-3 bg-white text-orange-600 rounded-full border border-stone-100 shadow-sm">
             <Flame className="w-5 h-5 fill-orange-500" />
             <span className="font-bold text-lg">{streak}</span>
-          </div>
-          <div className="flex items-center gap-3 px-6 py-3 bg-stone-900 text-white rounded-full shadow-xl shadow-stone-200">
-            <Trophy className="w-5 h-5 fill-emerald-400 text-emerald-400" />
-            <span className="font-bold text-lg">{profile?.xp || 0}</span>
           </div>
         </div>
       </header>
@@ -353,14 +469,71 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
 };
 
 const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
+  const { user, isDemo } = useContext(AuthContext);
   const [search, setSearch] = useState('');
-  const { play, loading: ttsLoading } = useTTS();
+  const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
+  const [editJapanese, setEditJapanese] = useState('');
+  const [editMeaning, setEditMeaning] = useState('');
+  const [editRomaji, setEditRomaji] = useState('');
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const { play, loading: ttsLoading } = useTTSContext();
 
   const filteredVocab = vocab.filter(v => 
     v.japanese.includes(search) || 
     v.meaning.toLowerCase().includes(search.toLowerCase()) || 
     (v.romaji && v.romaji.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const handleDelete = async (id: string) => {
+    if (!id) return;
+    setIsDeleting(id);
+    try {
+      if (isDemo) {
+        const localVocab = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
+        const updatedVocab = localVocab.filter((v: any) => v.id !== id);
+        localStorage.setItem('komorebi_vocab', JSON.stringify(updatedVocab));
+        window.dispatchEvent(new Event('vocab_update'));
+      } else if (user) {
+        const vocabRef = doc(db, 'users', user.uid, 'vocabularies', id);
+        await setDoc(vocabRef, { deleted: true }, { merge: true }); // Soft delete or actual delete
+        // For this app, let's do actual delete
+        const { deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(vocabRef);
+      }
+    } catch (error) {
+      console.error("Delete Error:", error);
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVocab || !editingVocab.id) return;
+    
+    try {
+      if (isDemo) {
+        const localVocab = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
+        const updatedVocab = localVocab.map((v: any) => 
+          v.id === editingVocab.id 
+            ? { ...v, japanese: editJapanese, meaning: editMeaning, romaji: editRomaji } 
+            : v
+        );
+        localStorage.setItem('komorebi_vocab', JSON.stringify(updatedVocab));
+        window.dispatchEvent(new Event('vocab_update'));
+      } else if (user) {
+        const vocabRef = doc(db, 'users', user.uid, 'vocabularies', editingVocab.id);
+        await updateDoc(vocabRef, {
+          japanese: editJapanese,
+          meaning: editMeaning,
+          romaji: editRomaji
+        });
+      }
+      setEditingVocab(null);
+    } catch (error) {
+      console.error("Update Error:", error);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -391,31 +564,123 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
               layout
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="group bg-white p-6 rounded-3xl border border-stone-50 shadow-sm hover:shadow-md transition-all flex items-center justify-between"
+              className="group bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors">
+                <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors shrink-0">
                   {v.japanese[0]}
                 </div>
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-2xl font-serif text-stone-900">{v.japanese}</span>
                     <span className="text-stone-400 font-mono text-[10px] uppercase tracking-widest">{v.romaji}</span>
+                    <div className="px-2 py-0.5 bg-stone-50 rounded text-[8px] font-bold text-stone-400 uppercase tracking-tighter">
+                      Mastery: {v.mastery}%
+                    </div>
                   </div>
                   <p className="text-stone-500 font-editorial italic">{v.meaning}</p>
                 </div>
               </div>
-              <button 
-                onClick={() => play(v.japanese)}
-                disabled={ttsLoading}
-                className="p-3 text-stone-300 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
-              >
-                <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
-              </button>
+              <div className="flex items-center gap-2 justify-end border-t sm:border-t-0 pt-4 sm:pt-0">
+                <button 
+                  onClick={() => play(v.japanese)}
+                  disabled={ttsLoading}
+                  className="p-3 text-stone-400 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                  title="Speak"
+                >
+                  <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
+                </button>
+                <button 
+                  onClick={() => {
+                    setEditingVocab(v);
+                    setEditJapanese(v.japanese);
+                    setEditMeaning(v.meaning);
+                    setEditRomaji(v.romaji || '');
+                  }}
+                  className="p-3 text-stone-400 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                  title="Edit"
+                >
+                  <Pencil className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => v.id && handleDelete(v.id)}
+                  disabled={isDeleting === v.id}
+                  className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                  title="Delete"
+                >
+                  <Trash2 className={cn("w-5 h-5", isDeleting === v.id && "animate-pulse")} />
+                </button>
+              </div>
             </motion.div>
           ))
         )}
       </div>
+
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingVocab && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingVocab(null)}
+              className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl p-10 overflow-hidden"
+            >
+              <h3 className="text-3xl font-editorial italic text-stone-900 mb-8">Edit Word</h3>
+              <form onSubmit={handleUpdate} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Japanese</label>
+                  <input 
+                    value={editJapanese}
+                    onChange={(e) => setEditJapanese(e.target.value)}
+                    className="w-full p-4 bg-stone-50 rounded-2xl font-serif text-xl outline-none focus:ring-2 focus:ring-stone-100"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Romaji</label>
+                  <input 
+                    value={editRomaji}
+                    onChange={(e) => setEditRomaji(e.target.value)}
+                    className="w-full p-4 bg-stone-50 rounded-2xl font-mono text-sm outline-none focus:ring-2 focus:ring-stone-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Meaning</label>
+                  <input 
+                    value={editMeaning}
+                    onChange={(e) => setEditMeaning(e.target.value)}
+                    className="w-full p-4 bg-stone-50 rounded-2xl font-editorial italic outline-none focus:ring-2 focus:ring-stone-100"
+                    required
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setEditingVocab(null)}
+                    className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold hover:bg-stone-100 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -424,18 +689,35 @@ const Translator = () => {
   const [text, setText] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   const handleTranslate = async () => {
     if (!text) return;
+    
+    // Check cache first
+    const cacheKey = `translate_${text.trim().toLowerCase()}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      setResult(cached);
+      return;
+    }
+
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("Gemini API Key is missing");
+
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Translate the following text between English and Japanese. Provide the translation, romaji (if Japanese), and a brief explanation of any cultural nuances or grammar points. Text: "${text}"`,
+        contents: `Translate the following text to ${/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(text) ? "English" : "Japanese"}: "${text}". Provide ONLY the translation, no extra text.`,
       });
-      setResult(response.text || "No translation found.");
+
+      const translation = response.text || "Translation failed";
+      setResult(translation);
+      
+      // Save to cache
+      localStorage.setItem(cacheKey, translation);
     } catch (error) {
       console.error("Translation Error:", error);
       setResult("Sorry, I couldn't translate that. Please try again.");
@@ -447,17 +729,19 @@ const Translator = () => {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-10">
-        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Sentence Translator</h2>
-        <p className="text-stone-500 font-serif italic">AI-powered translation with cultural context.</p>
+        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Word Translator</h2>
+        <p className="text-stone-500 font-serif italic">Fast, reliable word translations powered by Gemini AI.</p>
       </div>
 
       <div className="space-y-6">
         <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-stone-50">
-          <textarea 
+          <input 
+            type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Type a sentence in English or Japanese..."
-            className="w-full h-32 p-4 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-100 transition-all text-lg resize-none outline-none"
+            onKeyDown={(e) => e.key === 'Enter' && handleTranslate()}
+            placeholder="Type a word in English or Japanese..."
+            className="w-full p-6 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-100 transition-all text-xl outline-none"
           />
           <div className="mt-6 flex justify-end">
             <button 
@@ -479,21 +763,15 @@ const Translator = () => {
             >
               <div className="absolute top-8 right-8">
                 <button 
-                  onClick={() => {
-                    // Try to find the Japanese text in the result
-                    // Usually it's the first line or in a block
-                    const lines = result.split('\n').filter(l => l.trim().length > 0);
-                    const japaneseLine = lines.find(l => /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(l));
-                    play(japaneseLine || lines[0]);
-                  }}
+                  onClick={() => play(result)}
                   disabled={ttsLoading}
                   className="p-3 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all"
                 >
                   <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
                 </button>
               </div>
-              <div className="prose prose-stone max-w-none">
-                <ReactMarkdown>{result}</ReactMarkdown>
+              <div className="text-3xl font-medium text-stone-900">
+                {result}
               </div>
             </motion.div>
           )}
@@ -601,7 +879,7 @@ const DrawingCanvas = ({ target }: { target: string }) => {
 const KanaPractice = () => {
   const [type, setType] = useState<'hiragana' | 'katakana'>('hiragana');
   const [selected, setSelected] = useState(hiragana[0]);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   const data = type === 'hiragana' ? hiragana : katakana;
 
@@ -685,7 +963,7 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [romaji, setRomaji] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -832,22 +1110,37 @@ const Dictionary = () => {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query) return;
+
+    // Check cache first
+    const cacheKey = `dict_${query.trim().toLowerCase()}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      setResult(cached);
+      return;
+    }
+
     setLoading(true);
     try {
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        console.error("Gemini API Key is missing");
-        return;
-      }
+      if (!apiKey) throw new Error("Gemini API Key is missing");
+
       const ai = new GoogleGenAI({ apiKey });
+      
+      // First, get a quick translation
+      const transResponse = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Translate "${query}" to ${/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(query) ? "English" : "Japanese"}. Provide ONLY the translation.`,
+      });
+      const translation = transResponse.text || "";
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Act as a professional Japanese-English dictionary. Provide a concise, structured definition for "${query}". 
+        contents: `Act as a professional Japanese-English dictionary. Provide a concise, structured definition for "${query}" (Translation: ${translation}). 
         Include:
         1. Kanji/Kana
         2. Romaji
@@ -858,7 +1151,11 @@ const Dictionary = () => {
           tools: [{ googleSearch: {} }]
         }
       });
-      setResult(response.text || "No results found.");
+      const definition = response.text || translation || "No results found.";
+      setResult(definition);
+      
+      // Save to cache
+      localStorage.setItem(cacheKey, definition);
     } catch (error) {
       console.error("AI Error:", error);
       setResult("Sorry, I couldn't find that word. Please try again.");
@@ -924,7 +1221,7 @@ const Dictionary = () => {
 const Flashcards = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   if (vocab.length === 0) {
     return (
@@ -1017,7 +1314,7 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [options, setOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  const { play, loading: ttsLoading } = useTTS();
+  const { play, loading: ttsLoading } = useTTSContext();
 
   useEffect(() => {
     if (vocab.length >= 4 && !showResult) {
@@ -1368,20 +1665,52 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, signIn, logout, setDemoMode, isDemo: effectiveIsDemo }}>
-      <ErrorBoundary>
-        <div className="min-h-screen bg-[#f5f2ed] flex">
-          {/* Sidebar */}
-          <aside className="w-20 md:w-64 bg-white border-r border-stone-100 flex flex-col fixed h-full z-50">
-            <div className="p-6 flex items-center gap-3">
+      <TTSProvider>
+        <ErrorBoundary>
+          <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} />
+        </ErrorBoundary>
+      </TTSProvider>
+    </AuthContext.Provider>
+  );
+}
+
+const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }: any) => {
+  const { quotaExhausted } = useTTSContext();
+
+  return (
+    <div className="min-h-screen bg-[#f5f2ed] pb-24 md:pb-0 md:pl-64">
+      {/* Quota Warning */}
+      <AnimatePresence>
+        {quotaExhausted && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4"
+          >
+            <div className="bg-orange-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-orange-500/20 backdrop-blur-sm">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-bold">AI Voice Quota Reached</p>
+                <p className="text-[10px] opacity-90">Automatically switched to Built-in voice for today.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-64 bg-white border-r border-stone-100 flex-col fixed inset-y-0 left-0 z-50">
+            <div className="p-8 flex items-center gap-3">
               <div className="w-10 h-10 bg-stone-900 rounded-xl flex items-center justify-center text-white font-bold shrink-0">木</div>
-              <span className="hidden md:block font-serif font-bold text-xl tracking-tight">Komorebi</span>
+              <span className="font-serif font-bold text-xl tracking-tight">Komorebi</span>
             </div>
             
-            <nav className="flex-1 px-3 space-y-3 mt-8">
+            <nav className="flex-1 px-4 space-y-2 mt-4">
               {[
                 { id: 'dashboard', icon: Flame, label: 'Home' },
                 { id: 'vocab', icon: PlusCircle, label: 'Add Word' },
-                { id: 'vocabList', icon: List, label: 'Library' },
+                { id: 'vocabList', icon: List, label: 'Manage Vocabulary' },
                 { id: 'flashcards', icon: ChevronRight, label: 'Review' },
                 { id: 'quiz', icon: Brain, label: 'Quiz' },
                 { id: 'dictionary', icon: Search, label: 'Dictionary' },
@@ -1398,39 +1727,77 @@ export default function App() {
                       : "text-stone-400 hover:bg-stone-50 hover:text-stone-900"
                   )}
                 >
-                  <item.icon className={cn("w-6 h-6", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
-                  <span className="hidden md:block font-medium text-sm tracking-wide">{item.label}</span>
-                  {activeTab === item.id && (
-                    <motion.div 
-                      layoutId="active-pill"
-                      className="absolute left-0 w-1 h-6 bg-white rounded-full md:hidden"
-                    />
-                  )}
+                  <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
+                  <span className="font-medium text-sm tracking-wide">{item.label}</span>
                 </button>
               ))}
             </nav>
 
-            <div className="p-4 mt-auto">
+            <div className="p-6 border-t border-stone-50">
               <button 
                 onClick={logout}
                 className="w-full flex items-center gap-4 p-4 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
               >
-                <LogOut className="w-6 h-6" />
-                <span className="hidden md:block font-medium">Logout</span>
+                <LogOut className="w-5 h-5" />
+                <span className="font-medium text-sm">Logout</span>
               </button>
             </div>
           </aside>
 
+          {/* Mobile Bottom Navigation */}
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 px-2 py-3 flex justify-around items-center z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+            {[
+              { id: 'dashboard', icon: Flame },
+              { id: 'vocab', icon: PlusCircle },
+              { id: 'vocabList', icon: List },
+              { id: 'flashcards', icon: ChevronRight },
+              { id: 'quiz', icon: Brain },
+              { id: 'dictionary', icon: Search },
+              { id: 'translator', icon: Languages },
+              { id: 'kana', icon: Pencil },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id as any)}
+                className={cn(
+                  "p-3 rounded-xl transition-all relative",
+                  activeTab === item.id 
+                    ? "bg-stone-900 text-white shadow-lg shadow-stone-200" 
+                    : "text-stone-400"
+                )}
+              >
+                <item.icon className="w-5 h-5" />
+                {activeTab === item.id && (
+                  <motion.div 
+                    layoutId="active-nav-dot"
+                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full"
+                  />
+                )}
+              </button>
+            ))}
+          </nav>
+
           {/* Main Content */}
-          <main className="flex-1 ml-20 md:ml-64 p-6 md:p-12">
+          <main className="p-6 md:p-12 lg:p-16">
             <div className="max-w-5xl mx-auto">
+              {/* Header for Mobile */}
+              <div className="md:hidden flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-stone-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">木</div>
+                  <span className="font-serif font-bold text-lg tracking-tight">Komorebi</span>
+                </div>
+                <button onClick={logout} className="p-2 text-stone-400">
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeTab}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.3 }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
                 >
                   {activeTab === 'dashboard' && <Dashboard vocabCount={todayVocabCount} vocab={vocab} />}
                   {activeTab === 'vocab' && <VocabEntry vocab={vocab} />}
@@ -1445,7 +1812,5 @@ export default function App() {
             </div>
           </main>
         </div>
-      </ErrorBoundary>
-    </AuthContext.Provider>
-  );
-}
+      );
+    };
