@@ -1,10 +1,13 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
   GoogleAuthProvider, 
   User, 
-  signOut 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
 } from 'firebase/auth';
 import { 
   doc, 
@@ -40,7 +43,20 @@ import {
   Pencil,
   Trash2,
   Eraser,
-  RotateCcw
+  RotateCcw,
+  Settings as SettingsIcon,
+  Settings2,
+  ChevronLeft,
+  Book,
+  Library,
+  Layers,
+  MessageSquare,
+  Gamepad2,
+  Play,
+  Timer,
+  Ear,
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
@@ -116,8 +132,8 @@ const useTTS = () => {
   };
 
   const playGemini = async (text: string) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Gemini API Key is missing");
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("Gemini API Key is missing. Please add GOOGLE_API_KEY to your secrets.");
     
     try {
       const ai = new GoogleGenAI({ apiKey });
@@ -298,35 +314,133 @@ const ErrorBoundary = ({ children }: { children: React.ReactNode }) => {
 };
 
 const Login = () => {
-  const { setDemoMode } = useContext(AuthContext);
+  const { setDemoMode, signIn } = useContext(AuthContext);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      setDemoMode(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await signIn();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f5f2ed] p-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full text-center"
+        className="max-w-md w-full"
       >
-        <div className="mb-8 inline-flex items-center justify-center w-20 h-20 bg-stone-900 rounded-3xl rotate-3 shadow-lg">
-          <span className="text-4xl text-white font-bold">木</span>
+        <div className="text-center mb-8">
+          <div className="mb-6 inline-flex items-center justify-center w-20 h-20 bg-stone-900 rounded-3xl rotate-3 shadow-lg">
+            <span className="text-4xl text-white font-bold">木</span>
+          </div>
+          <h1 className="text-5xl font-serif font-light text-stone-900 mb-4 tracking-tight">Komorebi</h1>
+          <p className="text-stone-600 font-serif italic text-lg">
+            "Sunlight filtering through the leaves." <br/>
+            Your daily companion for mastering Japanese.
+          </p>
         </div>
-        <h1 className="text-5xl font-serif font-light text-stone-900 mb-4 tracking-tight">Komorebi</h1>
-        <p className="text-stone-600 mb-12 font-serif italic text-lg">
-          "Sunlight filtering through the leaves." <br/>
-          Your daily companion for mastering Japanese.
-        </p>
 
-        <div className="space-y-4">
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-stone-100 space-y-6">
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-2">Email Address</label>
+              <input 
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-4 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-200 outline-none transition-all"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-2">Password</label>
+              <input 
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-4 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-200 outline-none transition-all"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            {error && <p className="text-xs text-red-500 ml-2 italic">{error}</p>}
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-lg disabled:opacity-50"
+            >
+              {loading ? 'Processing...' : isRegistering ? 'Create Account' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="relative py-2">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-100"></div></div>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-widest text-stone-400"><span className="bg-white px-2">Or continue with</span></div>
+          </div>
+
           <button 
-            onClick={() => setDemoMode(true)}
-            className="w-full py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 text-lg"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full py-4 bg-white border border-stone-200 text-stone-900 rounded-full font-bold hover:bg-stone-50 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
           >
-            Start Learning Now
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+            Google
           </button>
+
+          <div className="text-center space-y-4">
+            <button 
+              onClick={() => setIsRegistering(!isRegistering)}
+              className="text-xs text-stone-400 hover:text-stone-900 transition-colors font-serif italic underline underline-offset-4"
+            >
+              {isRegistering ? 'Already have an account? Sign In' : "Don't have an account? Register"}
+            </button>
+            <div className="h-px bg-stone-50" />
+            <button 
+              onClick={() => setDemoMode(true)}
+              className="text-sm font-bold text-stone-900 hover:text-stone-600 transition-colors"
+            >
+              Continue as Guest
+            </button>
+          </div>
         </div>
 
-        <p className="mt-8 text-stone-400 text-xs font-serif italic">
-          No login required. Your progress is saved locally.
+        <p className="mt-8 text-stone-400 text-[10px] font-serif italic text-center">
+          Your progress is saved to your account. Guest data is saved locally.
         </p>
       </motion.div>
     </div>
@@ -338,7 +452,7 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
   const streak = profile?.streakCount || 0;
   const goalMet = profile?.dailyGoalMet || false;
   const { play, loading: ttsLoading, mode, setTTSMode, hasJaVoice } = useTTSContext();
-  const hasApiKey = !!(process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY);
+  const hasApiKey = !!getApiKey();
 
   const wordOfTheDay = vocab.length > 0 ? vocab[Math.floor(Math.random() * vocab.length)] : { japanese: "学習", romaji: "Gakushuu", meaning: "Study / Learning" };
 
@@ -346,9 +460,12 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-editorial italic text-stone-900 mb-0.5">
+          <button 
+            onClick={() => (window as any).setActiveTab('settings')}
+            className="text-3xl font-editorial italic text-stone-900 mb-0.5 hover:text-stone-600 transition-colors text-left"
+          >
             Okaeri, <span className="font-medium">{profile?.displayName?.split(' ')[0] || 'Learner'}</span>
-          </h2>
+          </button>
           <div className="flex items-center gap-3">
             <p className="text-stone-500 font-serif italic text-xs">The path to mastery is paved with daily steps.</p>
             {!hasApiKey && (
@@ -729,8 +846,8 @@ const Translator = () => {
 
     setLoading(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key not found. Please check your environment variables.");
+      const apiKey = getApiKey();
+      if (!apiKey) throw new Error("API Key not found. Please add GOOGLE_API_KEY to your secrets.");
 
       const ai = new GoogleGenAI({ apiKey });
       const isJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(text);
@@ -759,6 +876,8 @@ const Translator = () => {
         <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Word Translator</h2>
         <p className="text-stone-500 font-serif italic">Fast, reliable word translations powered by Gemini AI.</p>
       </div>
+
+      {!getApiKey() && <div className="mb-8"><MissingApiKeyWarning /></div>}
 
       <div className="space-y-6">
         <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-stone-50">
@@ -1116,44 +1235,57 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [romaji, setRomaji] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateMatch, setDuplicateMatch] = useState<Vocabulary | null>(null);
   const { play, loading: ttsLoading } = useTTSContext();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, isSubtype: boolean = false) => {
+    if (e) e.preventDefault();
     if (!japanese || !meaning) return;
     if (!isDemo && !user) return;
+
+    // Check for duplicate meaning if not already confirmed as subtype
+    if (!isSubtype) {
+      const existing = vocab.find(v => v.meaning.toLowerCase().trim() === meaning.toLowerCase().trim());
+      if (existing) {
+        setDuplicateMatch(existing);
+        setShowDuplicateModal(true);
+        return;
+      }
+    }
     
     setLoading(true);
     try {
+      const vocabData = {
+        uid: isDemo ? 'guest' : user!.uid,
+        japanese,
+        meaning,
+        romaji,
+        createdAt: Timestamp.now(),
+        mastery: 0,
+        type: isSubtype ? 'sub' : 'main' as 'main' | 'sub',
+        parentId: isSubtype ? duplicateMatch?.id : undefined
+      };
+
       if (isDemo) {
         const localVocab = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
         const newVocab = {
           id: Math.random().toString(36).substr(2, 9),
-          uid: 'guest',
-          japanese,
-          meaning,
-          romaji,
-          createdAt: Timestamp.now(),
-          mastery: 0
+          ...vocabData
         };
         localStorage.setItem('komorebi_vocab', JSON.stringify([newVocab, ...localVocab]));
         window.dispatchEvent(new Event('vocab_update'));
       } else if (user) {
         const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
-        await addDoc(vocabRef, {
-          uid: user.uid,
-          japanese,
-          meaning,
-          romaji,
-          createdAt: Timestamp.now(),
-          mastery: 0
-        });
+        await addDoc(vocabRef, vocabData);
       }
       
       setJapanese('');
       setMeaning('');
       setRomaji('');
       setSuccess(true);
+      setShowDuplicateModal(false);
+      setDuplicateMatch(null);
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
       if (!isDemo && user) handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}/vocabularies`);
@@ -1164,6 +1296,38 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
+      {showDuplicateModal && (
+        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-stone-100"
+          >
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="w-8 h-8 text-amber-500" />
+            </div>
+            <h3 className="text-2xl font-editorial italic text-stone-900 mb-2">Duplicate Meaning</h3>
+            <p className="text-stone-500 font-serif italic text-sm mb-8">
+              The meaning "<span className="text-stone-900 font-bold">{meaning}</span>" already exists for "<span className="text-stone-900 font-bold">{duplicateMatch?.japanese}</span>". 
+              Would you like to add this as a sub-type of the existing word?
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => handleSubmit(undefined, true)}
+                className="py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all"
+              >
+                Yes, Add Sub-type
+              </button>
+              <button 
+                onClick={() => setShowDuplicateModal(false)}
+                className="py-4 bg-stone-50 text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
       <div className="xl:col-span-2">
         <div className="mb-6">
           <h2 className="text-3xl font-editorial italic text-stone-900 mb-1">New Word</h2>
@@ -1224,34 +1388,72 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
               <p className="text-stone-400 font-editorial italic">Your list is empty. Add your first word!</p>
             </div>
           ) : (
-            vocab.map((v) => (
-              <motion.div 
-                key={v.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="group bg-white p-6 rounded-3xl border border-stone-50 shadow-sm hover:shadow-md transition-all flex items-center justify-between"
-              >
-                <div className="flex items-center gap-6">
-                  <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors">
-                    {v.japanese[0]}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl font-serif text-stone-900">{v.japanese}</span>
-                      <span className="text-stone-400 font-mono text-[10px] uppercase tracking-widest">{v.romaji}</span>
+            vocab.filter(v => v.type !== 'sub').map((v) => {
+              const subs = vocab.filter(s => s.parentId === v.id);
+              return (
+                <div key={v.id} className="space-y-2">
+                  <motion.div 
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="group bg-white p-6 rounded-3xl border border-stone-50 shadow-sm hover:shadow-md transition-all flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-6">
+                      <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors">
+                        {v.japanese[0]}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl font-serif text-stone-900">{v.japanese}</span>
+                          <span className="text-stone-400 font-mono text-[10px] uppercase tracking-widest">{v.romaji}</span>
+                        </div>
+                        <p className="text-stone-500 font-editorial italic">{v.meaning}</p>
+                      </div>
                     </div>
-                    <p className="text-stone-500 font-editorial italic">{v.meaning}</p>
-                  </div>
+                    <button 
+                      onClick={() => play(v.japanese)}
+                      disabled={ttsLoading}
+                      className="p-3 text-stone-300 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                    >
+                      <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
+                    </button>
+                  </motion.div>
+                  
+                  {subs.length > 0 && (
+                    <div className="ml-12 space-y-2 border-l-2 border-stone-100 pl-6">
+                      {subs.map(sub => (
+                        <motion.div 
+                          key={sub.id}
+                          initial={{ opacity: 0, x: 10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="bg-stone-50/50 p-4 rounded-2xl flex items-center justify-between group/sub"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-lg font-serif text-stone-400 group-hover/sub:bg-stone-900 group-hover/sub:text-white transition-colors">
+                              {sub.japanese[0]}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg font-serif text-stone-900">{sub.japanese}</span>
+                                <span className="text-stone-400 font-mono text-[8px] uppercase tracking-widest">{sub.romaji}</span>
+                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[6px] font-bold uppercase tracking-widest rounded-full border border-amber-100">Sub</span>
+                              </div>
+                              <p className="text-stone-400 font-editorial italic text-sm">{sub.meaning}</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => play(sub.japanese)}
+                            disabled={ttsLoading}
+                            className="p-2 text-stone-200 hover:text-stone-900 transition-all"
+                          >
+                            <Volume2 className="w-4 h-4" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <button 
-                  onClick={() => play(v.japanese)}
-                  disabled={ttsLoading}
-                  className="p-3 text-stone-300 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
-                >
-                  <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
-                </button>
-              </motion.div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -1292,13 +1494,13 @@ const Dictionary = () => {
     setLoading(true);
     setShowCommon(false);
     try {
-      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key not found.");
+      const apiKey = getApiKey();
+      if (!apiKey) throw new Error("API Key not found. Please add GOOGLE_API_KEY to your secrets.");
 
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: `Act as a professional Japanese-English dictionary. Provide a concise, structured definition for "${query}". 
         Include:
         1. Kanji/Kana
@@ -1325,6 +1527,8 @@ const Dictionary = () => {
         <h2 className="text-3xl font-editorial italic text-stone-900 mb-2">Japanese Dictionary</h2>
         <p className="text-stone-500 font-serif italic">Search for any word or browse common expressions below.</p>
       </div>
+
+      {!getApiKey() && <div className="mb-8"><MissingApiKeyWarning /></div>}
 
       <form onSubmit={handleSearch} className="relative mb-8">
         <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
@@ -1623,6 +1827,1464 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
   );
 };
 
+const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
+  const { profile, user, isDemo } = useContext(AuthContext);
+  const { mode, setTTSMode } = useTTSContext();
+  const [name, setName] = useState(profile?.displayName || '');
+  const [dailyGoal, setDailyGoal] = useState(profile?.dailyGoal || 5);
+  const [avatar, setAvatar] = useState(profile?.avatar || '🦊');
+  const [saving, setSaving] = useState(false);
+  const hasApiKey = !!getApiKey();
+
+  const avatars = ['🦊', '🐱', '🐶', '🐼', '🐨', '🦁', '🐯', '🐸', '🐵', '🦉'];
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const updates = { 
+        displayName: name, 
+        dailyGoal: Number(dailyGoal),
+        avatar: avatar
+      };
+      if (isDemo) {
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, ...updates }));
+        window.location.reload();
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid), updates);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const handleTestAI = async () => {
+    setTestStatus('testing');
+    setTestError(null);
+    try {
+      const apiKey = getApiKey();
+      if (!apiKey) throw new Error("API Key is missing from the environment.");
+      
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Respond with 'OK'",
+      });
+      
+      if (response.text) {
+        setTestStatus('success');
+      } else {
+        throw new Error("Received an empty response from the AI.");
+      }
+    } catch (error: any) {
+      console.error("AI Test Error:", error);
+      setTestStatus('error');
+      setTestError(error.message || "An unknown error occurred.");
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-10 pb-12">
+      <div>
+        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Settings</h2>
+        <p className="text-stone-500 font-serif italic">Personalize your learning experience.</p>
+      </div>
+
+      <div className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-stone-50 space-y-8">
+        <section className="space-y-6">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Profile</h3>
+          
+          <div className="space-y-6">
+            <div className="flex items-center gap-6 p-4 bg-stone-50 rounded-3xl">
+              <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center text-4xl shadow-sm border border-stone-100">
+                {avatar}
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Current Identity</div>
+                <div className="text-xl font-editorial italic text-stone-900">{name || 'Learner'}</div>
+                <div className="text-[10px] text-stone-400 font-serif italic">Level 12 · {vocab.length} words mastered</div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Choose Avatar</label>
+              <div className="flex flex-wrap gap-2">
+                {avatars.map(a => (
+                  <button
+                    key={a}
+                    onClick={() => setAvatar(a)}
+                    className={cn(
+                      "w-10 h-10 flex items-center justify-center rounded-xl text-xl transition-all",
+                      avatar === a ? "bg-stone-900 scale-110 shadow-lg" : "bg-stone-50 hover:bg-stone-100"
+                    )}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Display Name</label>
+                <input 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full p-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-stone-200 outline-none transition-all"
+                  placeholder="Enter your name..."
+                />
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Email Address</label>
+                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-400 text-sm font-medium border border-stone-100/50">
+                  {user?.email || 'Guest User'}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Daily Goal (Words)</label>
+                <div className="flex gap-2">
+                  {[3, 5, 10, 20].map(goal => (
+                    <button
+                      key={goal}
+                      onClick={() => setDailyGoal(goal)}
+                      className={cn(
+                        "flex-1 py-3 rounded-xl font-bold text-xs transition-all",
+                        dailyGoal === goal ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-400 hover:bg-stone-100"
+                      )}
+                    >
+                      {goal}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Member Since</label>
+                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-400 text-sm font-medium border border-stone-100/50">
+                  {user?.metadata.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString() : 'Today (Guest)'}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button 
+                onClick={handleSaveProfile}
+                disabled={saving || !name.trim()}
+                className="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold disabled:opacity-50 hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Saving...
+                  </>
+                ) : 'Save Profile Changes'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div className="h-px bg-stone-50" />
+
+        {user && !isDemo && (
+          <>
+            <section className="space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Account</h3>
+              <div className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Logged in as</div>
+                  <div className="text-sm font-medium text-stone-900">{user.email}</div>
+                </div>
+                <div className="px-3 py-1 bg-white rounded-full border border-stone-100 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                  {user.providerData[0]?.providerId === 'google.com' ? 'Google' : 'Email'}
+                </div>
+              </div>
+            </section>
+            <div className="h-px bg-stone-50" />
+          </>
+        )}
+
+        <section className="space-y-4">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Voice Preferences</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button 
+              onClick={() => setTTSMode('native')}
+              className={cn(
+                "p-6 rounded-3xl border-2 transition-all text-left space-y-2",
+                mode === 'native' ? "border-stone-900 bg-stone-50" : "border-stone-50 hover:border-stone-200"
+              )}
+            >
+              <div className="font-bold text-stone-900">Built-in Voice</div>
+              <div className="text-xs text-stone-500 font-serif italic">Uses your device's native text-to-speech. Free and unlimited.</div>
+            </button>
+            <button 
+              onClick={() => setTTSMode('gemini')}
+              className={cn(
+                "p-6 rounded-3xl border-2 transition-all text-left space-y-2",
+                mode === 'gemini' ? "border-stone-900 bg-stone-50" : "border-stone-50 hover:border-stone-200"
+              )}
+            >
+              <div className="font-bold text-stone-900">AI Voice (Gemini)</div>
+              <div className="text-xs text-stone-500 font-serif italic">High-quality neural voices. Requires an API key and has daily limits.</div>
+            </button>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">System Diagnostics</h3>
+          <div className="p-6 bg-stone-50 rounded-3xl space-y-4">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-stone-500 font-serif italic">AI Key Status</span>
+              <span className={cn(
+                "font-mono font-bold px-2 py-1 rounded-md",
+                hasApiKey ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50"
+              )}>
+                {hasApiKey ? `Detected (Ends in ...${getApiKey().slice(-4)})` : 'Missing'}
+              </span>
+            </div>
+            
+            <div className="pt-2">
+              <button 
+                onClick={handleTestAI}
+                disabled={testStatus === 'testing'}
+                className={cn(
+                  "w-full py-3 rounded-2xl text-xs font-bold transition-all border",
+                  testStatus === 'idle' && "bg-white text-stone-900 border-stone-100 hover:bg-stone-50",
+                  testStatus === 'testing' && "bg-stone-100 text-stone-400 border-stone-100 animate-pulse",
+                  testStatus === 'success' && "bg-emerald-50 text-emerald-600 border-emerald-100",
+                  testStatus === 'error' && "bg-red-50 text-red-600 border-red-100"
+                )}
+              >
+                {testStatus === 'idle' && "Test AI Connection"}
+                {testStatus === 'testing' && "Testing..."}
+                {testStatus === 'success' && "✓ Connection Successful"}
+                {testStatus === 'error' && "✕ Connection Failed"}
+              </button>
+              {testError && (
+                <div className="mt-3 p-3 bg-red-50 text-[10px] text-red-700 font-mono rounded-xl border border-red-100 overflow-auto max-h-24">
+                  {testError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-stone-500 font-serif italic">Environment</span>
+              <span className="font-mono text-stone-900 bg-white px-2 py-1 rounded-md border border-stone-100">
+                {process.env.NODE_ENV || 'development'}
+              </span>
+            </div>
+            {!hasApiKey && (
+              <p className="text-[10px] text-amber-600 font-serif italic bg-amber-50 p-3 rounded-xl border border-amber-100">
+                Tip: If you just added your key, you may need to "Share" or "Deploy" the app again to update the production build.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+};
+
+const Games = ({ vocab }: { vocab: Vocabulary[] }) => {
+  const [currentGame, setCurrentGame] = useState<string | null>(null);
+
+  if (currentGame === 'typing') return <TypingGame vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'match') return <KanaMatch onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'scramble') return <WordScramble vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'speed') return <SpeedQuiz vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'listening') return <ListeningHero vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'sprint') return <FlashcardSprint vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'kanji') return <KanjiQuiz vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'particle') return <ParticleMaster onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'sentence') return <SentenceBuilder vocab={vocab} onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'invaders') return <KanaInvaders onBack={() => setCurrentGame(null)} />;
+
+  const games = [
+    { id: 'typing', title: 'Typing Game', description: 'Type the falling characters before they hit the ground.', icon: Gamepad2, color: 'bg-blue-500' },
+    { id: 'match', title: 'Kana Match', description: 'Match Kana with their Romaji equivalents in this memory game.', icon: Layers, color: 'bg-emerald-500' },
+    { id: 'scramble', title: 'Word Scramble', description: 'Unscramble Japanese words to test your spelling.', icon: RefreshCw, color: 'bg-purple-500' },
+    { id: 'speed', title: 'Speed Quiz', description: 'How many words can you translate in 60 seconds?', icon: Timer, color: 'bg-orange-500' },
+    { id: 'listening', title: 'Listening Hero', description: 'Listen to the audio and pick the correct word.', icon: Ear, color: 'bg-pink-500' },
+    { id: 'sprint', title: 'Flashcard Sprint', description: 'Rapid-fire flashcard review to build muscle memory.', icon: Zap, color: 'bg-yellow-500' },
+    { id: 'kanji', title: 'Kanji Quiz', description: 'Match the Kanji to its meaning.', icon: Book, color: 'bg-red-500' },
+    { id: 'particle', title: 'Particle Master', description: 'Choose the correct particle for the sentence.', icon: List, color: 'bg-cyan-500' },
+    { id: 'sentence', title: 'Sentence Builder', description: 'Arrange the words to form the correct sentence.', icon: Pencil, color: 'bg-indigo-500' },
+    { id: 'invaders', title: 'Kana Invaders', description: 'Type the romaji for the falling kana before they reach the bottom.', icon: Gamepad2, color: 'bg-stone-900' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-4xl font-editorial italic text-stone-900">Arcade</h2>
+        <p className="text-stone-500 font-serif italic">Fun ways to reinforce your Japanese skills.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {games.map((game) => (
+          <motion.button
+            key={game.id}
+            whileHover={{ y: -5, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setCurrentGame(game.id)}
+            className="flex flex-col text-left bg-white p-8 rounded-[2.5rem] shadow-xl shadow-stone-200/50 border border-stone-100 group transition-all"
+          >
+            <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg", game.color)}>
+              <game.icon className="w-7 h-7" />
+            </div>
+            <h3 className="text-xl font-bold text-stone-900 mb-2 group-hover:text-stone-700 transition-colors">{game.title}</h3>
+            <p className="text-stone-500 text-sm leading-relaxed">{game.description}</p>
+            <div className="mt-6 flex items-center gap-2 text-stone-900 font-bold text-xs uppercase tracking-widest">
+              Play Now <ChevronRight className="w-3 h-3" />
+            </div>
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const KanaMatch = ({ onBack }: { onBack: () => void }) => {
+  const [cards, setCards] = useState<{ id: number; content: string; type: 'kana' | 'romaji'; matched: boolean; flipped: boolean; pairId: number }[]>([]);
+  const [flipped, setFlipped] = useState<number[]>([]);
+  const [moves, setMoves] = useState(0);
+  const [matches, setMatches] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+
+  const initGame = useCallback(() => {
+    const pool = hiragana.concat(katakana);
+    const selected = [];
+    const usedIndices = new Set();
+    while (selected.length < 8) {
+      const idx = Math.floor(Math.random() * pool.length);
+      if (!usedIndices.has(idx)) {
+        selected.push(pool[idx]);
+        usedIndices.add(idx);
+      }
+    }
+
+    const gameCards: any[] = [];
+    selected.forEach((item, idx) => {
+      gameCards.push({ id: idx * 2, content: item.kana, type: 'kana', matched: false, flipped: false, pairId: idx });
+      gameCards.push({ id: idx * 2 + 1, content: item.romaji, type: 'romaji', matched: false, flipped: false, pairId: idx });
+    });
+
+    setCards(gameCards.sort(() => Math.random() - 0.5));
+    setFlipped([]);
+    setMoves(0);
+    setMatches(0);
+    setGameOver(false);
+  }, []);
+
+  useEffect(() => {
+    initGame();
+  }, [initGame]);
+
+  const handleFlip = (id: number) => {
+    if (flipped.length === 2 || cards.find(c => c.id === id)?.flipped || cards.find(c => c.id === id)?.matched) return;
+
+    const newFlipped = [...flipped, id];
+    setFlipped(newFlipped);
+    setCards(prev => prev.map(c => c.id === id ? { ...c, flipped: true } : c));
+
+    if (newFlipped.length === 2) {
+      setMoves(prev => prev + 1);
+      const [id1, id2] = newFlipped;
+      const card1 = cards.find(c => c.id === id1)!;
+      const card2 = cards.find(c => c.id === id2)!;
+
+      if (card1.pairId === card2.pairId) {
+        setTimeout(() => {
+          setCards(prev => prev.map(c => (c.id === id1 || c.id === id2) ? { ...c, matched: true } : c));
+          setFlipped([]);
+          setMatches(prev => {
+            const next = prev + 1;
+            if (next === 8) setGameOver(true);
+            return next;
+          });
+        }, 500);
+      } else {
+        setTimeout(() => {
+          setCards(prev => prev.map(c => (c.id === id1 || c.id === id2) ? { ...c, flipped: false } : c));
+          setFlipped([]);
+        }, 1000);
+      }
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Kana Match</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Match the Kana with its Romaji.</p>
+          </div>
+        </div>
+        <div className="flex gap-6">
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Moves</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{moves}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Matches</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{matches}/8</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {cards.map(card => (
+          <motion.button
+            key={card.id}
+            whileHover={!card.matched && !card.flipped ? { scale: 1.05 } : {}}
+            whileTap={!card.matched && !card.flipped ? { scale: 0.95 } : {}}
+            onClick={() => handleFlip(card.id)}
+            className={cn(
+              "aspect-square rounded-3xl flex items-center justify-center text-3xl font-bold transition-all duration-500 preserve-3d relative shadow-lg",
+              card.flipped || card.matched ? "bg-white text-stone-900 rotate-y-180" : "bg-stone-900 text-white"
+            )}
+          >
+            {(card.flipped || card.matched) ? card.content : '?'}
+          </motion.button>
+        ))}
+      </div>
+
+      {gameOver && (
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-stone-900 text-white p-10 rounded-[3rem] text-center shadow-2xl">
+          <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-3xl font-editorial italic mb-2">Well Done!</h3>
+          <p className="text-stone-400 mb-8">You finished in {moves} moves.</p>
+          <button onClick={initGame} className="px-10 py-4 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-50 transition-all">Play Again</button>
+        </motion.div>
+      )}
+    </div>
+  );
+};
+
+const WordScramble = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [currentWord, setCurrentWord] = useState<Vocabulary | null>(null);
+  const [scrambled, setScrambled] = useState('');
+  const [input, setInput] = useState('');
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('');
+
+  const nextWord = useCallback(() => {
+    if (vocab.length === 0) return;
+    const word = vocab[Math.floor(Math.random() * vocab.length)];
+    setCurrentWord(word);
+    const chars = word.japanese.split('');
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    setScrambled(chars.join(''));
+    setInput('');
+    setMessage('');
+  }, [vocab]);
+
+  useEffect(() => {
+    nextWord();
+  }, [nextWord]);
+
+  const checkAnswer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input === currentWord?.japanese) {
+      setScore(prev => prev + 10);
+      setMessage('Correct! ✨');
+      setTimeout(nextWord, 1000);
+    } else {
+      setMessage('Try again! ❌');
+    }
+  };
+
+  if (vocab.length < 3) {
+    return (
+      <div className="text-center p-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+        <h3 className="text-2xl font-editorial italic text-stone-900 mb-4">Not enough words</h3>
+        <p className="text-stone-500 mb-8">Add at least 3 words to your vocabulary to play Word Scramble.</p>
+        <button onClick={onBack} className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold">Go Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Word Scramble</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Unscramble the Japanese word.</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+          <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-8">
+        <div className="text-5xl font-bold tracking-widest text-stone-900 bg-stone-50 py-10 rounded-3xl">{scrambled}</div>
+        <p className="text-stone-400 font-serif italic">Meaning: {currentWord?.meaning}</p>
+        
+        <form onSubmit={checkAnswer} className="space-y-4">
+          <input 
+            autoFocus
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type the correct word..."
+            className="w-full p-5 bg-stone-50 border-none rounded-2xl text-center text-2xl font-medium focus:ring-2 focus:ring-stone-200 outline-none"
+          />
+          <button type="submit" className="w-full py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100">Check Answer</button>
+        </form>
+        {message && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("font-bold", message.includes('Correct') ? "text-emerald-500" : "text-red-500")}>{message}</motion.p>}
+      </div>
+    </div>
+  );
+};
+
+const SpeedQuiz = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [currentQuestion, setCurrentQuestion] = useState<{ word: Vocabulary; options: string[] } | null>(null);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
+
+  const generateQuestion = useCallback(() => {
+    if (vocab.length < 4) return;
+    const word = vocab[Math.floor(Math.random() * vocab.length)];
+    const options = [word.meaning];
+    while (options.length < 4) {
+      const randomWord = vocab[Math.floor(Math.random() * vocab.length)].meaning;
+      if (!options.includes(randomWord)) options.push(randomWord);
+    }
+    setCurrentQuestion({ word, options: options.sort(() => Math.random() - 0.5) });
+  }, [vocab]);
+
+  useEffect(() => {
+    if (gameState === 'playing' && timeLeft > 0) {
+      const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    } else if (timeLeft === 0) {
+      setGameState('end');
+    }
+  }, [gameState, timeLeft]);
+
+  const startGame = () => {
+    setScore(0);
+    setTimeLeft(60);
+    setGameState('playing');
+    generateQuestion();
+  };
+
+  const handleAnswer = (option: string) => {
+    if (option === currentQuestion?.word.meaning) {
+      setScore(prev => prev + 10);
+    }
+    generateQuestion();
+  };
+
+  if (vocab.length < 4) {
+    return (
+      <div className="text-center p-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+        <h3 className="text-2xl font-editorial italic text-stone-900 mb-4">Not enough words</h3>
+        <p className="text-stone-500 mb-8">Add at least 4 words to your vocabulary to play Speed Quiz.</p>
+        <button onClick={onBack} className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold">Go Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Speed Quiz</h2>
+            <p className="text-stone-500 font-serif italic text-xs">How many can you get in 60 seconds?</p>
+          </div>
+        </div>
+        <div className="flex gap-6">
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Time</div>
+            <div className={cn("text-2xl font-editorial italic", timeLeft < 10 ? "text-red-500" : "text-stone-900")}>{timeLeft}s</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+          </div>
+        </div>
+      </div>
+
+      {gameState === 'start' ? (
+        <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center">
+          <Timer className="w-16 h-16 text-stone-900 mx-auto mb-6" />
+          <h3 className="text-3xl font-editorial italic mb-4">Are you ready?</h3>
+          <p className="text-stone-500 mb-8">You have 60 seconds to translate as many words as possible.</p>
+          <button onClick={startGame} className="px-12 py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100">Start Quiz</button>
+        </div>
+      ) : gameState === 'playing' ? (
+        <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-10">
+          <div className="text-6xl font-bold text-stone-900">{currentQuestion?.word.japanese}</div>
+          <div className="grid grid-cols-2 gap-4">
+            {currentQuestion?.options.map((option, i) => (
+              <button key={i} onClick={() => handleAnswer(option)} className="p-6 bg-stone-50 hover:bg-stone-900 hover:text-white rounded-2xl font-medium transition-all text-lg">{option}</button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-stone-900 text-white p-12 rounded-[3rem] text-center shadow-2xl">
+          <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-3xl font-editorial italic mb-2">Time's Up!</h3>
+          <p className="text-stone-400 mb-8">Final Score: {score}</p>
+          <button onClick={startGame} className="px-12 py-5 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-50 transition-all">Try Again</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ListeningHero = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const { play } = useTTSContext();
+  const [currentQuestion, setCurrentQuestion] = useState<{ word: Vocabulary; options: string[] } | null>(null);
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('');
+
+  const generateQuestion = useCallback(() => {
+    if (vocab.length < 4) return;
+    const word = vocab[Math.floor(Math.random() * vocab.length)];
+    const options = [word.japanese];
+    while (options.length < 4) {
+      const randomWord = vocab[Math.floor(Math.random() * vocab.length)].japanese;
+      if (!options.includes(randomWord)) options.push(randomWord);
+    }
+    setCurrentQuestion({ word, options: options.sort(() => Math.random() - 0.5) });
+    setMessage('');
+  }, [vocab]);
+
+  useEffect(() => {
+    generateQuestion();
+  }, [generateQuestion]);
+
+  const handleAnswer = (option: string) => {
+    if (option === currentQuestion?.word.japanese) {
+      setScore(prev => prev + 10);
+      setMessage('Correct! ✨');
+      setTimeout(generateQuestion, 1000);
+    } else {
+      setMessage('Try again! ❌');
+    }
+  };
+
+  if (vocab.length < 4) {
+    return (
+      <div className="text-center p-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+        <h3 className="text-2xl font-editorial italic text-stone-900 mb-4">Not enough words</h3>
+        <p className="text-stone-500 mb-8">Add at least 4 words to your vocabulary to play Listening Hero.</p>
+        <button onClick={onBack} className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold">Go Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Listening Hero</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Listen and pick the correct word.</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+          <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-10">
+        <button 
+          onClick={() => currentQuestion && play(currentQuestion.word.japanese)}
+          className="w-32 h-32 bg-stone-900 text-white rounded-full flex items-center justify-center mx-auto shadow-2xl hover:scale-105 transition-all active:scale-95 group"
+        >
+          <Volume2 className="w-12 h-12 group-hover:animate-pulse" />
+        </button>
+        <p className="text-stone-400 font-serif italic">Meaning: {currentQuestion?.word.meaning}</p>
+        
+        <div className="grid grid-cols-2 gap-4">
+          {currentQuestion?.options.map((option, i) => (
+            <button key={i} onClick={() => handleAnswer(option)} className="p-6 bg-stone-50 hover:bg-stone-900 hover:text-white rounded-2xl font-bold transition-all text-2xl">{option}</button>
+          ))}
+        </div>
+        {message && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("font-bold", message.includes('Correct') ? "text-emerald-500" : "text-red-500")}>{message}</motion.p>}
+      </div>
+    </div>
+  );
+};
+
+const FlashcardSprint = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
+
+  const shuffledVocab = useRef<Vocabulary[]>([]);
+
+  useEffect(() => {
+    if (gameState === 'playing' && timeLeft > 0) {
+      const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    } else if (timeLeft === 0) {
+      setGameState('end');
+    }
+  }, [gameState, timeLeft]);
+
+  const startGame = () => {
+    shuffledVocab.current = [...vocab].sort(() => Math.random() - 0.5);
+    setCurrentIndex(0);
+    setShowAnswer(false);
+    setScore(0);
+    setTimeLeft(60);
+    setGameState('playing');
+  };
+
+  const handleNext = (correct: boolean) => {
+    if (correct) setScore(prev => prev + 1);
+    setShowAnswer(false);
+    setCurrentIndex(prev => (prev + 1) % shuffledVocab.current.length);
+  };
+
+  if (vocab.length < 1) {
+    return (
+      <div className="text-center p-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+        <h3 className="text-2xl font-editorial italic text-stone-900 mb-4">No words found</h3>
+        <p className="text-stone-500 mb-8">Add some words to your vocabulary to play Flashcard Sprint.</p>
+        <button onClick={onBack} className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold">Go Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Flashcard Sprint</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Rapid fire review. Speed is key!</p>
+          </div>
+        </div>
+        <div className="flex gap-6">
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Time</div>
+            <div className={cn("text-2xl font-editorial italic", timeLeft < 10 ? "text-red-500" : "text-stone-900")}>{timeLeft}s</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Words</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+          </div>
+        </div>
+      </div>
+
+      {gameState === 'start' ? (
+        <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center">
+          <Zap className="w-16 h-16 text-stone-900 mx-auto mb-6" />
+          <h3 className="text-3xl font-editorial italic mb-4">Sprint Mode</h3>
+          <p className="text-stone-500 mb-8">Review as many cards as you can in 60 seconds.</p>
+          <button onClick={startGame} className="px-12 py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100">Start Sprint</button>
+        </div>
+      ) : gameState === 'playing' ? (
+        <div className="space-y-8">
+          <motion.div 
+            key={currentIndex}
+            initial={{ x: 50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            className="bg-white aspect-video rounded-[3rem] border border-stone-100 shadow-xl flex flex-col items-center justify-center p-12 text-center relative overflow-hidden"
+          >
+            <div className="text-6xl font-bold text-stone-900 mb-4">{shuffledVocab.current[currentIndex].japanese}</div>
+            <AnimatePresence>
+              {showAnswer && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+                  <div className="text-2xl text-stone-500 font-serif italic">{shuffledVocab.current[currentIndex].romaji}</div>
+                  <div className="text-3xl font-bold text-stone-900">{shuffledVocab.current[currentIndex].meaning}</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {!showAnswer && (
+              <button onClick={() => setShowAnswer(true)} className="mt-8 text-stone-400 font-bold text-xs uppercase tracking-widest hover:text-stone-900 transition-colors">Show Answer</button>
+            )}
+          </motion.div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <button 
+              disabled={!showAnswer}
+              onClick={() => handleNext(false)} 
+              className="py-5 bg-stone-100 text-stone-500 rounded-2xl font-bold hover:bg-stone-200 transition-all disabled:opacity-50"
+            >
+              Skip
+            </button>
+            <button 
+              disabled={!showAnswer}
+              onClick={() => handleNext(true)} 
+              className="py-5 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all disabled:opacity-50"
+            >
+              I Knew It
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-stone-900 text-white p-12 rounded-[3rem] text-center shadow-2xl">
+          <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-3xl font-editorial italic mb-2">Sprint Finished!</h3>
+          <p className="text-stone-400 mb-8">You mastered {score} words in 60 seconds.</p>
+          <button onClick={startGame} className="px-12 py-5 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-50 transition-all">Start New Sprint</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const KanjiQuiz = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [currentQuestion, setCurrentQuestion] = useState<{ word: Vocabulary; options: string[] } | null>(null);
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('');
+
+  const generateQuestion = useCallback(() => {
+    const kanjiWords = vocab.filter(v => /[\u4e00-\u9faf]/.test(v.japanese));
+    if (kanjiWords.length < 4) return;
+    
+    const word = kanjiWords[Math.floor(Math.random() * kanjiWords.length)];
+    const options = [word.meaning];
+    while (options.length < 4) {
+      const randomWord = vocab[Math.floor(Math.random() * vocab.length)].meaning;
+      if (!options.includes(randomWord)) options.push(randomWord);
+    }
+    setCurrentQuestion({ word, options: options.sort(() => Math.random() - 0.5) });
+    setMessage('');
+  }, [vocab]);
+
+  useEffect(() => {
+    generateQuestion();
+  }, [generateQuestion]);
+
+  const handleAnswer = (option: string) => {
+    if (option === currentQuestion?.word.meaning) {
+      setScore(prev => prev + 10);
+      setMessage('Correct! ✨');
+      setTimeout(generateQuestion, 1000);
+    } else {
+      setMessage('Try again! ❌');
+    }
+  };
+
+  if (vocab.filter(v => /[\u4e00-\u9faf]/.test(v.japanese)).length < 4) {
+    return (
+      <div className="text-center p-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+        <h3 className="text-2xl font-editorial italic text-stone-900 mb-4">Not enough Kanji</h3>
+        <p className="text-stone-500 mb-8">Add at least 4 words containing Kanji to your vocabulary to play Kanji Quiz.</p>
+        <button onClick={onBack} className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold">Go Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Kanji Quiz</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Match the Kanji to its meaning.</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+          <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-10">
+        <div className="text-8xl font-bold text-stone-900">{currentQuestion?.word.japanese}</div>
+        <div className="grid grid-cols-2 gap-4">
+          {currentQuestion?.options.map((option, i) => (
+            <button key={i} onClick={() => handleAnswer(option)} className="p-6 bg-stone-50 hover:bg-stone-900 hover:text-white rounded-2xl font-bold transition-all text-xl">{option}</button>
+          ))}
+        </div>
+        {message && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("font-bold", message.includes('Correct') ? "text-emerald-500" : "text-red-500")}>{message}</motion.p>}
+      </div>
+    </div>
+  );
+};
+
+const ParticleMaster = ({ onBack }: { onBack: () => void }) => {
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('');
+  const [currentQuestion, setCurrentQuestion] = useState<{ sentence: string; answer: string; options: string[] } | null>(null);
+
+  const questions = [
+    { sentence: "私は学生___です。", answer: "は", options: ["は", "が", "を", "に"] },
+    { sentence: "りんご___食べます。", answer: "を", options: ["を", "は", "が", "も"] },
+    { sentence: "学校___行きます。", answer: "に", options: ["に", "で", "を", "は"] },
+    { sentence: "公園___遊びます。", answer: "で", options: ["で", "に", "を", "へ"] },
+    { sentence: "これ___私の本です。", answer: "は", options: ["は", "が", "の", "と"] },
+    { sentence: "田中さん___会いました。", answer: "に", options: ["に", "と", "を", "で"] },
+    { sentence: "日本語___勉強します。", answer: "を", options: ["を", "が", "は", "に"] },
+    { sentence: "猫___好きです。", answer: "が", options: ["が", "は", "を", "に"] },
+  ];
+
+  const generateQuestion = useCallback(() => {
+    const q = questions[Math.floor(Math.random() * questions.length)];
+    setCurrentQuestion(q);
+    setMessage('');
+  }, []);
+
+  useEffect(() => {
+    generateQuestion();
+  }, [generateQuestion]);
+
+  const handleAnswer = (option: string) => {
+    if (option === currentQuestion?.answer) {
+      setScore(prev => prev + 10);
+      setMessage('Correct! ✨');
+      setTimeout(generateQuestion, 1000);
+    } else {
+      setMessage('Try again! ❌');
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Particle Master</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Choose the correct particle for the sentence.</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+          <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-10">
+        <div className="text-4xl font-bold text-stone-900 leading-relaxed">{currentQuestion?.sentence}</div>
+        <div className="grid grid-cols-2 gap-4">
+          {currentQuestion?.options.map((option, i) => (
+            <button key={i} onClick={() => handleAnswer(option)} className="p-6 bg-stone-50 hover:bg-stone-900 hover:text-white rounded-2xl font-bold transition-all text-2xl">{option}</button>
+          ))}
+        </div>
+        {message && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("font-bold", message.includes('Correct') ? "text-emerald-500" : "text-red-500")}>{message}</motion.p>}
+      </div>
+    </div>
+  );
+};
+
+const SentenceBuilder = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('');
+  const [currentQuestion, setCurrentQuestion] = useState<{ sentence: string; words: string[]; answer: string[] } | null>(null);
+  const [userAnswer, setUserAnswer] = useState<string[]>([]);
+
+  const sentences = [
+    { sentence: "I eat an apple.", answer: ["私", "は", "りんご", "を", "食べます"], words: ["私", "は", "りんご", "を", "食べます"].sort(() => Math.random() - 0.5) },
+    { sentence: "I go to school.", answer: ["私", "は", "学校", "に", "行きます"], words: ["私", "は", "学校", "に", "行きます"].sort(() => Math.random() - 0.5) },
+    { sentence: "This is my book.", answer: ["これ", "は", "私", "の", "本", "です"], words: ["これ", "は", "私", "の", "本", "です"].sort(() => Math.random() - 0.5) },
+    { sentence: "I like cats.", answer: ["私", "は", "猫", "が", "好き", "です"], words: ["私", "は", "猫", "が", "好き", "です"].sort(() => Math.random() - 0.5) },
+  ];
+
+  const generateQuestion = useCallback(() => {
+    const q = sentences[Math.floor(Math.random() * sentences.length)];
+    setCurrentQuestion({ ...q, words: [...q.words] });
+    setUserAnswer([]);
+    setMessage('');
+  }, []);
+
+  useEffect(() => {
+    generateQuestion();
+  }, [generateQuestion]);
+
+  const addWord = (word: string, index: number) => {
+    setUserAnswer([...userAnswer, word]);
+    const newWords = [...currentQuestion!.words];
+    newWords.splice(index, 1);
+    setCurrentQuestion({ ...currentQuestion!, words: newWords });
+  };
+
+  const removeWord = (word: string, index: number) => {
+    const newUserAnswer = [...userAnswer];
+    newUserAnswer.splice(index, 1);
+    setUserAnswer(newUserAnswer);
+    setCurrentQuestion({ ...currentQuestion!, words: [...currentQuestion!.words, word] });
+  };
+
+  const checkAnswer = () => {
+    if (userAnswer.join('') === currentQuestion?.answer.join('')) {
+      setScore(prev => prev + 20);
+      setMessage('Correct! ✨');
+      setTimeout(generateQuestion, 1500);
+    } else {
+      setMessage('Try again! ❌');
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900">Sentence Builder</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Arrange the words to form the correct sentence.</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+          <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+        </div>
+      </div>
+
+      <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-10">
+        <div className="text-xl font-serif italic text-stone-500">"{currentQuestion?.sentence}"</div>
+        
+        <div className="min-h-[100px] p-6 bg-stone-50 rounded-3xl flex flex-wrap gap-3 items-center justify-center border-2 border-dashed border-stone-200">
+          {userAnswer.map((word, i) => (
+            <button key={i} onClick={() => removeWord(word, i)} className="px-6 py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800 transition-all">{word}</button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-3 justify-center">
+          {currentQuestion?.words.map((word, i) => (
+            <button key={i} onClick={() => addWord(word, i)} className="px-6 py-3 bg-white border border-stone-200 text-stone-900 rounded-xl font-bold hover:bg-stone-50 transition-all">{word}</button>
+          ))}
+        </div>
+
+        <div className="pt-4">
+          <button onClick={checkAnswer} className="w-full py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100">Check Sentence</button>
+        </div>
+        
+        {message && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("font-bold", message.includes('Correct') ? "text-emerald-500" : "text-red-500")}>{message}</motion.p>}
+      </div>
+    </div>
+  );
+};
+
+const KanaInvaders = ({ onBack }: { onBack: () => void }) => {
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [gameState, setGameState] = useState<'start' | 'playing' | 'end'>('start');
+  const [invaders, setInvaders] = useState<{ id: number; char: string; x: number; y: number }[]>([]);
+  const [input, setInput] = useState('');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const gameLoopRef = useRef<number | null>(null);
+  const nextIdRef = useRef(0);
+
+  const allKana = [...hiragana, ...katakana];
+
+  const startGame = (diff: 'easy' | 'medium' | 'hard') => {
+    setDifficulty(diff);
+    setGameState('playing');
+    setScore(0);
+    setTimeLeft(60);
+    setInvaders([]);
+    setInput('');
+  };
+
+  const spawnInvader = useCallback(() => {
+    const kana = allKana[Math.floor(Math.random() * allKana.length)];
+    const newInvader = {
+      id: nextIdRef.current++,
+      char: kana.kana,
+      romaji: kana.romaji,
+      x: Math.random() * 80 + 10,
+      y: -10
+    };
+    setInvaders(prev => [...prev, newInvader]);
+  }, []);
+
+  useEffect(() => {
+    if (gameState === 'playing') {
+      const getBaseInterval = () => {
+        switch (difficulty) {
+          case 'easy': return 3000;
+          case 'medium': return 2000;
+          case 'hard': return 1200;
+        }
+      };
+
+      const spawnInterval = setInterval(spawnInvader, getBaseInterval() - Math.min(score * 12, getBaseInterval() * 0.7));
+      const timerInterval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+      
+      const gameLoop = () => {
+        const getBaseSpeed = () => {
+          switch (difficulty) {
+            case 'easy': return 0.15;
+            case 'medium': return 0.25;
+            case 'hard': return 0.4;
+          }
+        };
+
+        setInvaders(prev => {
+          const next = prev.map(inv => ({ ...inv, y: inv.y + getBaseSpeed() + (score / 300) }));
+          if (next.some(inv => inv.y > 100)) {
+            setGameState('end');
+            return [];
+          }
+          return next;
+        });
+        gameLoopRef.current = requestAnimationFrame(gameLoop);
+      };
+      gameLoopRef.current = requestAnimationFrame(gameLoop);
+
+      return () => {
+        clearInterval(spawnInterval);
+        clearInterval(timerInterval);
+        cancelAnimationFrame(gameLoopRef.current!);
+      };
+    }
+  }, [gameState, spawnInvader, difficulty, score]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) setGameState('end');
+  }, [timeLeft]);
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.toLowerCase();
+    setInput(val);
+    
+    const invaderIndex = invaders.findIndex(inv => {
+      const kana = allKana.find(k => k.kana === inv.char);
+      return kana?.romaji === val;
+    });
+
+    if (invaderIndex !== -1) {
+      setInvaders(prev => prev.filter((_, i) => i !== invaderIndex));
+      setScore(prev => prev + 10);
+      setInput('');
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto h-[750px] flex flex-col">
+      <div className="mb-6 flex justify-between items-end">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900 mb-1">Kana Invaders</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Type the romaji before the kana reach the bottom.</p>
+          </div>
+        </div>
+        <div className="flex gap-6">
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Time</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{timeLeft}s</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 bg-stone-900 rounded-[3rem] relative overflow-hidden border-8 border-stone-800 shadow-2xl">
+        {gameState === 'start' ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-12 text-center">
+            <Gamepad2 className="w-16 h-16 mb-6 text-blue-400" />
+            <h3 className="text-3xl font-editorial italic mb-4">Protect the Base!</h3>
+            <p className="text-stone-400 mb-8">Type the romaji for the falling kana before they reach the bottom.</p>
+            
+            <div className="flex gap-3 mb-8">
+              {(['easy', 'medium', 'hard'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDifficulty(d)}
+                  className={cn(
+                    "px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all",
+                    difficulty === d 
+                      ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" 
+                      : "bg-stone-800 text-stone-400 hover:bg-stone-700"
+                  )}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => startGame(difficulty)} className="px-12 py-5 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all">Start Game</button>
+          </div>
+        ) : gameState === 'playing' ? (
+          <>
+            {invaders.map(inv => (
+              <motion.div 
+                key={inv.id}
+                className="absolute text-4xl font-bold text-white"
+                style={{ left: `${inv.x}%`, top: `${inv.y}%` }}
+              >
+                {inv.char}
+              </motion.div>
+            ))}
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-12 text-center">
+            <Trophy className="w-16 h-16 mb-4 text-yellow-400" />
+            <h3 className="text-3xl font-editorial italic mb-2">Game Over</h3>
+            <p className="text-stone-400 mb-8">Final Score: {score}</p>
+            <div className="flex gap-4">
+              <button onClick={() => startGame(difficulty)} className="px-12 py-5 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all">Try Again</button>
+              <button onClick={() => setGameState('start')} className="px-12 py-5 bg-stone-800 text-white rounded-full font-bold hover:bg-stone-700 transition-all">Menu</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {gameState === 'playing' && (
+        <div className="mt-8 w-full max-w-xs mx-auto px-4">
+          <input 
+            autoFocus
+            value={input}
+            onChange={handleInput}
+            className="w-full p-4 bg-stone-900 border-2 border-stone-800 rounded-2xl text-center text-white text-2xl outline-none focus:ring-4 ring-blue-500/20 shadow-2xl"
+            placeholder="Type romaji..."
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TypingGame = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () => void }) => {
+  const [gameStarted, setGameStarted] = useState(false);
+  const [score, setScore] = useState(0);
+  const [bubbles, setBubbles] = useState<{ id: number; text: string; romaji: string; x: number; y: number; speed: number }[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [gameOver, setGameOver] = useState(false);
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [highScore, setHighScore] = useState(() => Number(localStorage.getItem('komorebi_game_highscore') || 0));
+  const gameAreaRef = useRef<HTMLDivElement>(null);
+  const nextId = useRef(0);
+
+  const startLevel = (diff: 'easy' | 'medium' | 'hard') => {
+    setDifficulty(diff);
+    setGameStarted(true);
+    setScore(0);
+    setBubbles([]);
+    setGameOver(false);
+    setInputValue('');
+  };
+
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+
+    const getBaseInterval = () => {
+      switch (difficulty) {
+        case 'easy': return 3500;
+        case 'medium': return 2500;
+        case 'hard': return 1500;
+      }
+    };
+
+    const interval = setInterval(() => {
+      const source = vocab.length > 5 ? vocab : hiragana.concat(katakana);
+      const item = source[Math.floor(Math.random() * source.length)];
+      
+      let text, romaji;
+      if ('japanese' in item) {
+        text = item.japanese;
+        romaji = item.romaji;
+      } else {
+        text = item.kana;
+        romaji = item.romaji;
+      }
+
+      const getBaseSpeed = () => {
+        switch (difficulty) {
+          case 'easy': return 0.2;
+          case 'medium': return 0.4;
+          case 'hard': return 0.6;
+        }
+      };
+
+      const newBubble = {
+        id: nextId.current++,
+        text,
+        romaji: romaji.toLowerCase(),
+        x: Math.random() * 80 + 10, // 10% to 90%
+        y: -10,
+        speed: getBaseSpeed() + Math.random() * 0.5 + (score / 200)
+      };
+      setBubbles(prev => [...prev, newBubble]);
+    }, getBaseInterval() - Math.min(score * 15, getBaseInterval() * 0.7));
+
+    return () => clearInterval(interval);
+  }, [gameStarted, gameOver, vocab, score, difficulty]);
+
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+
+    const animationFrame = requestAnimationFrame(function animate() {
+      setBubbles(prev => {
+        const next = prev.map(b => ({ ...b, y: b.y + b.speed }));
+        if (next.some(b => b.y > 100)) {
+          setGameOver(true);
+          if (score > highScore) {
+            setHighScore(score);
+            localStorage.setItem('komorebi_game_highscore', score.toString());
+          }
+          return next;
+        }
+        return next;
+      });
+      requestAnimationFrame(animate);
+    });
+
+    return () => cancelAnimationFrame(animationFrame);
+  }, [gameStarted, gameOver, score, highScore]);
+
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.toLowerCase();
+    setInputValue(val);
+
+    const matchIndex = bubbles.findIndex(b => b.romaji === val);
+    if (matchIndex !== -1) {
+      setScore(prev => prev + 10);
+      setBubbles(prev => prev.filter((_, i) => i !== matchIndex));
+      setInputValue('');
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto h-[750px] flex flex-col">
+      <div className="mb-6 flex justify-between items-end">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onBack}
+            className="w-10 h-10 bg-white border border-stone-100 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-50 transition-all shadow-sm"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900 mb-1">Typing Game</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Type the romaji before the bubbles hit the ground.</p>
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">Score</div>
+            <div className="text-2xl font-editorial italic text-stone-900">{score}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[8px] font-bold uppercase tracking-widest text-stone-400">High Score</div>
+            <div className="text-2xl font-editorial italic text-stone-400">{highScore}</div>
+          </div>
+        </div>
+      </div>
+
+      <div 
+        ref={gameAreaRef}
+        className="flex-1 bg-white rounded-[2.5rem] border border-stone-100 shadow-inner relative overflow-hidden"
+      >
+        {!gameStarted ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mb-6">
+              <Brain className="w-10 h-10 text-stone-900" />
+            </div>
+            <h3 className="text-2xl font-editorial italic text-stone-900 mb-2">Ready to type?</h3>
+            <p className="text-stone-500 font-serif italic text-sm mb-8 max-w-xs">
+              Bubbles will fall with Japanese characters. Type their romaji equivalents to pop them.
+            </p>
+            
+            <div className="flex gap-3 mb-8">
+              {(['easy', 'medium', 'hard'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDifficulty(d)}
+                  className={cn(
+                    "px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest transition-all",
+                    difficulty === d 
+                      ? "bg-stone-900 text-white shadow-lg" 
+                      : "bg-stone-50 text-stone-400 hover:bg-stone-100"
+                  )}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+
+            <button 
+              onClick={() => startLevel(difficulty)}
+              className="px-12 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100 flex items-center gap-2"
+            >
+              <Play className="w-5 h-5" /> Start Game
+            </button>
+          </div>
+        ) : gameOver ? (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center z-20">
+            <h3 className="text-4xl font-editorial italic text-red-600 mb-2">Game Over</h3>
+            <p className="text-stone-500 font-serif italic text-lg mb-8">Final Score: {score}</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => startLevel(difficulty)}
+                className="px-10 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100"
+              >
+                Try Again
+              </button>
+              <button 
+                onClick={() => setGameStarted(false)}
+                className="px-10 py-4 bg-stone-50 text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all"
+              >
+                Menu
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <AnimatePresence>
+              {bubbles.map(bubble => (
+                <motion.div
+                  key={bubble.id}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 1.5, opacity: 0, transition: { duration: 0.2 } }}
+                  style={{ 
+                    position: 'absolute', 
+                    left: `${bubble.x}%`, 
+                    top: `${bubble.y}%`,
+                    transform: 'translateX(-50%)'
+                  }}
+                  className="w-14 h-14 bg-white border-2 border-stone-100 rounded-full shadow-lg flex flex-col items-center justify-center z-10"
+                >
+                  <span className="text-base font-bold text-stone-900">{bubble.text}</span>
+                  <div className="text-[6px] font-mono text-stone-300 uppercase tracking-tighter mt-0.5">{bubble.romaji}</div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {/* Ground */}
+            <div className="absolute bottom-0 left-0 right-0 h-2 bg-red-50 border-t border-red-100" />
+          </>
+        )}
+      </div>
+
+      {gameStarted && !gameOver && (
+        <div className="mt-8 w-full max-w-xs mx-auto px-4">
+          <input 
+            autoFocus
+            value={inputValue}
+            onChange={handleInput}
+            placeholder="Type romaji..."
+            className="w-full p-4 bg-white border-2 border-stone-900 rounded-2xl shadow-2xl text-center font-mono text-lg outline-none focus:ring-4 ring-stone-100 transition-all"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Phrasebook = () => {
   const [activeCategory, setActiveCategory] = useState('Greetings');
   const { play, loading: ttsLoading } = useTTSContext();
@@ -1702,11 +3364,49 @@ const Phrasebook = () => {
 
 // --- Main App ---
 
+// Helper to get the best available API Key
+const getApiKey = () => {
+  const keys = [
+    process.env.GOOGLE_API_KEY,
+    process.env.GEMINI_API_KEY,
+    (import.meta as any).env?.VITE_GOOGLE_API_KEY,
+    (import.meta as any).env?.VITE_GEMINI_API_KEY
+  ];
+  // Prioritize keys that look like real Google API keys (start with AIza)
+  const validKey = keys.find(k => typeof k === 'string' && k.startsWith('AIza'));
+  if (validKey) return validKey;
+  
+  // Fallback to any non-empty string that isn't a placeholder
+  return keys.find(k => typeof k === 'string' && k.length > 10 && !k.includes('YOUR_API_KEY')) || '';
+};
+
+const MissingApiKeyWarning = () => (
+  <div className="bg-amber-50 border border-amber-100 p-8 rounded-[2.5rem] text-center space-y-4">
+    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
+      <AlertCircle className="w-8 h-8 text-amber-500" />
+    </div>
+    <h3 className="text-xl font-editorial italic text-stone-900">API Key Required</h3>
+    <p className="text-stone-600 font-serif italic text-sm max-w-md mx-auto">
+      To use the Translator and Dictionary on other devices, you need to add your Gemini API Key to the application's secrets.
+    </p>
+    <div className="bg-white p-6 rounded-2xl text-left text-xs space-y-3 border border-amber-50 shadow-sm">
+      <p className="font-bold text-stone-900 uppercase tracking-widest">How to fix:</p>
+      <ol className="list-decimal list-inside space-y-2 text-stone-500">
+        <li>Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-500 underline">Google AI Studio</a></li>
+        <li>Open <b>Settings</b> (⚙️ icon) in this app</li>
+        <li>Go to <b>Secrets</b> section</li>
+        <li>Add <code>GEMINI_API_KEY</code> with your key as the value</li>
+        <li>Refresh the page on your other device</li>
+      </ol>
+    </div>
+  </div>
+);
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game'>('dashboard');
 
   useEffect(() => {
     (window as any).setActiveTab = setActiveTab;
@@ -1737,152 +3437,167 @@ export default function App() {
     }
   };
 
+  // Auth listener
   useEffect(() => {
-    // Safety timeout for loading state
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log("Loading timeout reached, defaulting to demo mode...");
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser && !isDemo) {
         setLoading(false);
       }
-    }, 3000);
+    });
+    return () => unsubscribe();
+  }, [isDemo]);
 
-    if (isDemo) {
-      const loadDemoData = () => {
-        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
-        const v = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
-        
-        // Convert plain objects back to Timestamp-like if needed for consistency
-        const vocabList = v.map((item: any) => ({
-          ...item,
-          createdAt: item.createdAt?.seconds ? new Timestamp(item.createdAt.seconds, item.createdAt.nanoseconds) : Timestamp.now()
-        }));
+  // Data listener for authenticated user
+  useEffect(() => {
+    if (!user) return;
 
-        setProfile({
-          uid: 'guest',
-          displayName: 'Guest Learner',
-          email: 'guest@example.com',
-          streakCount: 0,
-          dailyGoalMet: false,
-          xp: 0,
-          ...p,
-          lastActiveDate: p.lastActiveDate?.seconds ? new Timestamp(p.lastActiveDate.seconds, p.lastActiveDate.nanoseconds) : Timestamp.now()
-        });
-        setVocab(vocabList);
-        setTodayVocabCount(vocabList.filter((item: any) => isToday(item.createdAt.toDate())).length);
-        setLoading(false);
-        clearTimeout(timeout);
-      };
+    setLoading(true);
+    const profileRef = doc(db, 'users', user.uid);
+    
+    // Initial connection test
+    getDocFromServer(profileRef).catch(e => console.error("Firebase connection test failed", e));
 
-      loadDemoData();
-      window.addEventListener('vocab_update', loadDemoData);
-      return () => {
-        window.removeEventListener('vocab_update', loadDemoData);
-        clearTimeout(timeout);
-      };
-    }
+    const unsubProfile = onSnapshot(profileRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as UserProfile;
+        setProfile(data);
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        clearTimeout(timeout);
-        // Initial connection test
-        try {
-          await getDocFromServer(doc(db, 'users', currentUser.uid));
-        } catch (e) {
-          console.error("Firebase connection test failed", e);
-        }
-
-        // Listen to profile
-        const profileRef = doc(db, 'users', currentUser.uid);
-        const unsubProfile = onSnapshot(profileRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as UserProfile;
-            setProfile(data);
-
-            // Check streak logic
-            const lastDate = data.lastActiveDate?.toDate();
-            if (lastDate && !isToday(lastDate)) {
-              const diff = differenceInDays(startOfDay(new Date()), startOfDay(lastDate));
-              if (diff > 1) {
-                // Streak broken
-                updateDoc(profileRef, { streakCount: 0, dailyGoalMet: false });
-              } else {
-                // New day, reset goal
-                updateDoc(profileRef, { dailyGoalMet: false });
-              }
-            }
+        // Check streak logic
+        const lastDate = data.lastActiveDate?.toDate();
+        if (lastDate && !isToday(lastDate)) {
+          const diff = differenceInDays(startOfDay(new Date()), startOfDay(lastDate));
+          if (diff > 1) {
+            updateDoc(profileRef, { streakCount: 0, dailyGoalMet: false }).catch(e => console.error("Streak reset failed", e));
           } else {
-            // Create profile
-            const newProfile: UserProfile = {
-              uid: currentUser.uid,
-              displayName: currentUser.displayName,
-              email: currentUser.email,
-              streakCount: 0,
-              lastActiveDate: Timestamp.now(),
-              dailyGoalMet: false,
-              xp: 0
-            };
-            setDoc(profileRef, newProfile);
-            setProfile(newProfile);
+            updateDoc(profileRef, { dailyGoalMet: false }).catch(e => console.error("Daily goal reset failed", e));
           }
-        }, (err) => handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}`));
-
-        // Listen to vocab
-        const vocabRef = collection(db, 'users', currentUser.uid, 'vocabularies');
-        const q = query(vocabRef, orderBy('createdAt', 'desc'));
-        const unsubVocab = onSnapshot(q, (snapshot) => {
-          const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Vocabulary));
-          setVocab(list);
-          
-          const todayCount = list.filter(v => isToday(v.createdAt.toDate())).length;
-          setTodayVocabCount(todayCount);
-
-          if (todayCount >= 5 && !profile?.dailyGoalMet) {
-            updateDoc(profileRef, { 
-              dailyGoalMet: true, 
-              streakCount: (profile?.streakCount || 0) + 1,
-              lastActiveDate: Timestamp.now(),
-              xp: (profile?.xp || 0) + 50
-            });
-          }
-        }, (err) => handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}/vocabularies`));
-
-        return () => {
-          unsubProfile();
-          unsubVocab();
-        };
+        }
       } else {
-        // No user, load demo data
-        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
-        const v = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
-        
-        const vocabList = v.map((item: any) => ({
-          ...item,
-          createdAt: item.createdAt?.seconds ? new Timestamp(item.createdAt.seconds, item.createdAt.nanoseconds) : Timestamp.now()
-        }));
-
-        setProfile({
-          uid: 'guest',
-          displayName: 'Guest Learner',
-          email: 'guest@example.com',
+        const newProfile: UserProfile = {
+          uid: user.uid,
+          displayName: user.displayName,
+          email: user.email,
           streakCount: 0,
+          lastActiveDate: Timestamp.now(),
           dailyGoalMet: false,
-          xp: 0,
-          ...p,
-          lastActiveDate: p.lastActiveDate?.seconds ? new Timestamp(p.lastActiveDate.seconds, p.lastActiveDate.nanoseconds) : Timestamp.now()
-        });
-        setVocab(vocabList);
-        setTodayVocabCount(vocabList.filter((item: any) => isToday(item.createdAt.toDate())).length);
+          xp: 0
+        };
+        setDoc(profileRef, newProfile).catch(e => console.error("Profile creation failed", e));
+        setProfile(newProfile);
       }
       setLoading(false);
-      clearTimeout(timeout);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+      setLoading(false);
+    });
+
+    const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
+    const q = query(vocabRef, orderBy('createdAt', 'desc'));
+    const unsubVocab = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Vocabulary));
+      setVocab(list);
+      setTodayVocabCount(list.filter(v => isToday(v.createdAt.toDate())).length);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `users/${user.uid}/vocabularies`);
+      setLoading(false);
     });
 
     return () => {
-      unsubscribe();
-      clearTimeout(timeout);
+      unsubProfile();
+      unsubVocab();
     };
-  }, [profile?.dailyGoalMet, profile?.streakCount, profile?.xp, isDemo]);
+  }, [user]);
+
+  // Demo mode listener
+  useEffect(() => {
+    if (!isDemo || user) return;
+
+    const loadDemoData = () => {
+      const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+      const v = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
+      
+      const vocabList = v.map((item: any) => ({
+        ...item,
+        createdAt: item.createdAt?.seconds ? new Timestamp(item.createdAt.seconds, item.createdAt.nanoseconds) : Timestamp.now()
+      }));
+
+      const lastDate = p.lastActiveDate?.seconds ? new Timestamp(p.lastActiveDate.seconds, p.lastActiveDate.nanoseconds).toDate() : null;
+      let streakCount = p.streakCount || 0;
+      let dailyGoalMet = p.dailyGoalMet || false;
+
+      if (lastDate && !isToday(lastDate)) {
+        const diff = differenceInDays(startOfDay(new Date()), startOfDay(lastDate));
+        if (diff > 1) {
+          streakCount = 0;
+          dailyGoalMet = false;
+        } else {
+          dailyGoalMet = false;
+        }
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, streakCount, dailyGoalMet, lastActiveDate: Timestamp.now() }));
+      }
+
+      setProfile({
+        uid: 'guest',
+        displayName: 'Guest Learner',
+        email: 'guest@example.com',
+        streakCount,
+        dailyGoalMet,
+        xp: 0,
+        ...p,
+        lastActiveDate: p.lastActiveDate?.seconds ? new Timestamp(p.lastActiveDate.seconds, p.lastActiveDate.nanoseconds) : Timestamp.now()
+      });
+      setVocab(vocabList);
+      setTodayVocabCount(vocabList.filter((item: any) => isToday(item.createdAt.toDate())).length);
+      setLoading(false);
+    };
+
+    loadDemoData();
+    window.addEventListener('vocab_update', loadDemoData);
+    return () => window.removeEventListener('vocab_update', loadDemoData);
+  }, [isDemo, user]);
+
+  // Streak update logic for authenticated user
+  useEffect(() => {
+    if (!user || !profile || profile.dailyGoalMet) return;
+    if (todayVocabCount >= 5) {
+      const profileRef = doc(db, 'users', user.uid);
+      updateDoc(profileRef, { 
+        dailyGoalMet: true, 
+        streakCount: (profile.streakCount || 0) + 1,
+        lastActiveDate: Timestamp.now(),
+        xp: (profile.xp || 0) + 50
+      });
+    }
+  }, [todayVocabCount, user, profile?.dailyGoalMet]);
+
+  // Streak update logic for demo mode
+  useEffect(() => {
+    if (!isDemo || user || !profile || profile.dailyGoalMet) return;
+    if (todayVocabCount >= 5) {
+      const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+      const updatedProfile = {
+        ...p,
+        streakCount: (p.streakCount || 0) + 1,
+        dailyGoalMet: true,
+        lastActiveDate: Timestamp.now(),
+        xp: (p.xp || 0) + 50
+      };
+      localStorage.setItem('komorebi_profile', JSON.stringify(updatedProfile));
+      setProfile(updatedProfile as any);
+    }
+  }, [todayVocabCount, isDemo, user, profile?.dailyGoalMet]);
+
+  // Safety timeout
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.log("Loading timeout reached...");
+        setLoading(false);
+      }
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [loading]);
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
@@ -1929,13 +3644,15 @@ export default function App() {
   }
 
   // Default to demo mode if not logged in
-  const effectiveIsDemo = isDemo || !user;
-
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, logout, setDemoMode, isDemo: effectiveIsDemo }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, logout, setDemoMode, isDemo }}>
       <TTSProvider>
         <ErrorBoundary>
-          <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} />
+          {!user && !isDemo ? (
+            <Login />
+          ) : (
+            <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} />
+          )}
         </ErrorBoundary>
       </TTSProvider>
     </AuthContext.Provider>
@@ -1985,6 +3702,7 @@ const NamePrompt = ({ onSave }: { onSave: (name: string) => void }) => {
 const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }: any) => {
   const { profile, user, isDemo } = useContext(AuthContext);
   const { quotaExhausted } = useTTSContext();
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   const isNewUser = profile && (profile.displayName === 'Guest Learner' || !profile.displayName);
 
@@ -2031,16 +3749,37 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
             </div>
             
             <nav className="flex-1 px-3 space-y-1 mt-2">
+              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">Main</div>
               {[
                 { id: 'dashboard', icon: Flame, label: 'Home' },
-                { id: 'vocab', icon: PlusCircle, label: 'Add Word' },
-                { id: 'vocabList', icon: List, label: 'Manage Vocabulary' },
-                { id: 'flashcards', icon: ChevronRight, label: 'Review' },
-                { id: 'quiz', icon: Brain, label: 'Quiz' },
-                { id: 'dictionary', icon: Search, label: 'Dictionary' },
-                { id: 'translator', icon: Languages, label: 'Translate' },
-                { id: 'phrasebook', icon: List, label: 'Phrases' },
                 { id: 'kana', icon: Pencil, label: 'Writing' },
+                { id: 'vocab', icon: PlusCircle, label: 'Add Word' },
+                { id: 'quiz', icon: Brain, label: 'Test' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id as any)}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all group relative",
+                    activeTab === item.id 
+                      ? "bg-stone-900 text-white shadow-lg shadow-stone-200" 
+                      : "text-stone-400 hover:bg-stone-50 hover:text-stone-900"
+                  )}
+                >
+                  <item.icon className={cn("w-4 h-4", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
+                  <span className="font-medium text-xs tracking-wide">{item.label}</span>
+                </button>
+              ))}
+
+              <div className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">More</div>
+              {[
+                { id: 'vocabList', icon: Library, label: 'Vocabulary' },
+                { id: 'flashcards', icon: Layers, label: 'Review' },
+                { id: 'game', icon: Gamepad2, label: 'Games' },
+                { id: 'dictionary', icon: BookOpen, label: 'Dictionary' },
+                { id: 'translator', icon: Languages, label: 'Translate' },
+                { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
+                { id: 'settings', icon: Settings2, label: 'Settings' },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -2069,39 +3808,112 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
             </div>
           </aside>
 
-          {/* Mobile Bottom Navigation */}
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 px-1 py-2 flex justify-around items-center z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-            {[
-              { id: 'dashboard', icon: Flame },
-              { id: 'vocab', icon: PlusCircle },
-              { id: 'vocabList', icon: List },
-              { id: 'flashcards', icon: ChevronRight },
-              { id: 'quiz', icon: Brain },
-              { id: 'dictionary', icon: Search },
-              { id: 'translator', icon: Languages },
-              { id: 'phrasebook', icon: List },
-              { id: 'kana', icon: Pencil },
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
-                className={cn(
-                  "p-2.5 rounded-lg transition-all relative",
-                  activeTab === item.id 
-                    ? "bg-stone-900 text-white shadow-md shadow-stone-200" 
-                    : "text-stone-400"
-                )}
-              >
-                <item.icon className="w-4 h-4" />
-                {activeTab === item.id && (
-                  <motion.div 
-                    layoutId="active-nav-dot"
-                    className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-0.5 h-0.5 bg-white rounded-full"
-                  />
-                )}
-              </button>
-            ))}
-          </nav>
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 px-1 py-2 flex justify-around items-center z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        {[
+          { id: 'dashboard', icon: Flame, label: 'Home' },
+          { id: 'kana', icon: Pencil, label: 'Writing' },
+          { id: 'vocab', icon: PlusCircle, label: 'Add' },
+          { id: 'quiz', icon: Brain, label: 'Test' },
+          { id: 'more', icon: List, label: 'More' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              if (item.id === 'more') {
+                setShowMoreMenu(true);
+              } else {
+                setActiveTab(item.id as any);
+                setShowMoreMenu(false);
+              }
+            }}
+            className={cn(
+              "flex flex-col items-center gap-1 p-2 rounded-xl transition-all relative min-w-[64px]",
+              activeTab === item.id || (item.id === 'more' && showMoreMenu)
+                ? "text-stone-900" 
+                : "text-stone-400"
+            )}
+          >
+            <item.icon className={cn("w-5 h-5", (activeTab === item.id || (item.id === 'more' && showMoreMenu)) && "text-stone-900")} />
+            <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
+            {(activeTab === item.id || (item.id === 'more' && showMoreMenu)) && (
+              <motion.div 
+                layoutId="active-nav-pill"
+                className="absolute inset-0 bg-stone-50 rounded-xl -z-10"
+              />
+            )}
+          </button>
+        ))}
+      </nav>
+
+      {/* Mobile More Menu Overlay */}
+      <AnimatePresence>
+        {showMoreMenu && (
+          <div className="md:hidden fixed inset-0 z-[150] flex flex-col justify-end">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMoreMenu(false)}
+              className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="relative bg-white rounded-t-[3rem] p-8 pb-12 shadow-2xl space-y-6"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xl font-editorial italic text-stone-900">More Options</h3>
+                <button onClick={() => setShowMoreMenu(false)} className="p-2 text-stone-400">
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { id: 'vocabList', icon: Library, label: 'Library' },
+                  { id: 'flashcards', icon: Layers, label: 'Review' },
+                  { id: 'game', icon: Gamepad2, label: 'Games' },
+                  { id: 'dictionary', icon: BookOpen, label: 'Dict' },
+                  { id: 'translator', icon: Languages, label: 'Translate' },
+                  { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
+                  { id: 'settings', icon: Settings2, label: 'Settings' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id as any);
+                      setShowMoreMenu(false);
+                    }}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-2xl transition-all",
+                      activeTab === item.id ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-500 hover:bg-stone-100"
+                    )}
+                  >
+                    <item.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={() => {
+                    logout();
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-3 p-4 text-red-500 bg-red-50 rounded-2xl font-bold text-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
           {/* Main Content */}
           <main className="p-4 md:p-8 lg:p-10">
@@ -2134,6 +3946,8 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                   {activeTab === 'translator' && <Translator />}
                   {activeTab === 'phrasebook' && <Phrasebook />}
                   {activeTab === 'kana' && <WritingPractice />}
+                  {activeTab === 'game' && <Games vocab={vocab} />}
+                  {activeTab === 'settings' && <Settings vocab={vocab} />}
                 </motion.div>
               </AnimatePresence>
             </div>

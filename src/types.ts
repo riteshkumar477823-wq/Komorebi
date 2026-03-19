@@ -8,6 +8,8 @@ export interface UserProfile {
   lastActiveDate: Timestamp | null;
   dailyGoalMet: boolean;
   xp: number;
+  dailyGoal?: number;
+  avatar?: string;
 }
 
 export interface Vocabulary {
@@ -18,6 +20,8 @@ export interface Vocabulary {
   romaji?: string;
   createdAt: Timestamp;
   mastery: number;
+  parentId?: string;
+  type?: 'main' | 'sub';
 }
 
 export enum OperationType {
