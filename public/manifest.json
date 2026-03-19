@@ -1,0 +1,21 @@
+{
+  "name": "Komorebi",
+  "short_name": "Komorebi",
+  "description": "Japanese Vocabulary Learning App",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f2ed",
+  "theme_color": "#1c1917",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/kanji/192/192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://picsum.photos/seed/kanji/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
