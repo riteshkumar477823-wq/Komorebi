@@ -58,7 +58,10 @@ import {
   RefreshCw,
   Zap,
   ArrowLeft,
-  Check
+  Check,
+  ShoppingBag,
+  Home,
+  Bot
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
@@ -72,6 +75,42 @@ import { hiragana, katakana } from './kanaData';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// --- Rank System ---
+const SOLO_LEVELING_RANKS = [
+  'E5', 'E4', 'E3', 'E2', 'E1',
+  'D5', 'D4', 'D3', 'D2', 'D1',
+  'C5', 'C4', 'C3', 'C2', 'C1',
+  'B5', 'B4', 'B3', 'B2', 'B1',
+  'A5', 'A4', 'A3', 'A2', 'A1',
+  'S5', 'S4', 'S3', 'S2', 'S1',
+  'SS5', 'SS4', 'SS3', 'SS2', 'SS1',
+  'SSS1'
+];
+
+const getNextRank = (currentRank: string) => {
+  const index = SOLO_LEVELING_RANKS.indexOf(currentRank || 'E5');
+  if (index === -1) return SOLO_LEVELING_RANKS[0];
+  if (index === SOLO_LEVELING_RANKS.length - 1) return currentRank;
+  return SOLO_LEVELING_RANKS[index + 1];
+};
+
+const calculateRank = (wordCount: number) => {
+  const titles = [
+    "Novice Learner", "Aspiring Student", "Dedicated Pupil", "Language Seeker", "Word Collector",
+    "Sentence Builder", "Grammar Explorer", "Kanji Apprentice", "Fluent Dreamer", "Cultural Bridge",
+    "Linguistic Warrior", "Scholar of the East", "Master of Meanings", "Kanji Slayer", "Zen Master",
+    "The Awakened", "Sovereign of Speech", "Legendary Linguist", "God of Gakushuu"
+  ];
+
+  const rankIndex = Math.min(Math.floor(wordCount / 50), SOLO_LEVELING_RANKS.length - 1);
+  const titleIndex = Math.min(Math.floor(wordCount / 100), titles.length - 1);
+  
+  return {
+    rank: SOLO_LEVELING_RANKS[rankIndex],
+    title: titles[titleIndex]
+  };
+};
 
 // --- AI Key Management ---
 const getApiKey = () => {
@@ -497,35 +536,31 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
 
   const wordOfTheDay = vocab.length > 0 ? vocab[Math.floor(Math.random() * vocab.length)] : { japanese: "学習", romaji: "Gakushuu", meaning: "Study / Learning" };
 
+  const nextRankThreshold = (Math.floor(vocab.length / 50) + 1) * 50;
+  const progress = (vocab.length % 50) / 50 * 100;
+
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-10">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
         >
           <button 
             onClick={() => (window as any).setActiveTab('settings')}
-            className="text-3xl font-editorial italic text-stone-900 mb-0.5 hover:text-stone-600 transition-colors text-left"
+            className="text-4xl font-editorial italic text-stone-900 mb-1 hover:text-stone-600 transition-colors text-left"
           >
             Okaeri, <span className="font-medium">{profile?.displayName?.split(' ')[0] || 'Learner'}</span>
           </button>
           <div className="flex items-center gap-3">
-            <p className="text-stone-500 font-serif italic text-xs">The path to mastery is paved with daily steps.</p>
+            <div className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-bold uppercase tracking-[0.2em] rounded-full border border-stone-200">
+              {profile?.title || 'Novice Learner'}
+            </div>
+            <p className="text-stone-500 font-serif italic text-sm">The path to mastery is paved with daily steps.</p>
             {!hasApiKey && (
               <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-bold rounded-full uppercase tracking-tighter border border-amber-100">
-                AI Features Offline (No API Key)
+                AI Features Offline
               </span>
-            )}
-            {hasJaVoice === false && (
-              <a 
-                href="https://support.google.com/chrome/answer/95414" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="px-2 py-0.5 bg-red-50 text-red-500 text-[8px] font-bold rounded-full uppercase tracking-tighter hover:bg-red-100 transition-colors"
-              >
-                Fix: No Japanese Voice
-              </a>
             )}
           </div>
         </motion.div>
@@ -534,34 +569,69 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
           animate={{ opacity: 1, x: 0 }}
           className="flex items-center gap-3"
         >
-          <div className="flex items-center gap-1.5 p-0.5 bg-white rounded-full border border-stone-100 shadow-sm">
+          <div className="flex items-center gap-1.5 p-1 bg-white rounded-full border border-stone-100 shadow-sm">
             <button 
               onClick={() => setTTSMode('native')}
               className={cn(
-                "px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all",
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
                 mode === 'native' ? "bg-stone-900 text-white" : "text-stone-400 hover:text-stone-600"
               )}
-              title="Free, unlimited usage using your device's built-in voice"
             >
               Built-in
             </button>
             <button 
               onClick={() => setTTSMode('gemini')}
               className={cn(
-                "px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all",
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
                 mode === 'gemini' ? "bg-stone-900 text-white" : "text-stone-400 hover:text-stone-600"
               )}
-              title="High-quality AI Voice powered by Gemini"
             >
               AI Voice
             </button>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 bg-white text-orange-600 rounded-full border border-stone-100 shadow-sm">
-            <Flame className="w-4 h-4 fill-orange-500" />
-            <span className="font-bold text-base">{streak}</span>
+          <div className="flex items-center gap-2 px-5 py-3 bg-stone-900 text-white rounded-full shadow-lg shadow-stone-200 group cursor-pointer hover:scale-105 transition-transform">
+            <div className="relative">
+              <Trophy className="w-4 h-4 text-amber-400 fill-amber-400 group-hover:animate-bounce" />
+              <div className="absolute -inset-1 bg-amber-400/20 rounded-full blur opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <span className="font-bold text-sm tracking-widest uppercase">{profile?.rank || 'E5'}</span>
+          </div>
+          <div className="flex items-center gap-2 px-5 py-3 bg-amber-100 text-amber-700 rounded-full border border-amber-200">
+            <Zap className="w-4 h-4 fill-amber-700" />
+            <span className="font-bold text-sm">{profile?.credits || 0}</span>
+          </div>
+          <div className="flex items-center gap-2 px-5 py-3 bg-orange-100 text-orange-700 rounded-full border border-orange-200">
+            <Flame className="w-4 h-4 fill-orange-700" />
+            <span className="font-bold text-sm">{streak}</span>
           </div>
         </motion.div>
       </header>
+
+      <section className="bg-stone-900 text-white p-10 rounded-[3.5rem] shadow-2xl shadow-stone-200 relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Rank Progression</h3>
+            <span className="text-xs font-mono text-stone-500">{vocab.length} / {nextRankThreshold} Words</span>
+          </div>
+          <div className="space-y-6">
+            <div className="flex justify-between items-end">
+              <div className="text-4xl font-editorial italic">Ascending to Next Rank</div>
+              <div className="text-amber-400 font-bold text-2xl">{Math.round(progress)}%</div>
+            </div>
+            <div className="h-4 bg-white/10 rounded-full overflow-hidden">
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                className="h-full bg-gradient-to-r from-amber-400 to-amber-200"
+              />
+            </div>
+            <p className="text-xs text-stone-500 font-serif italic uppercase tracking-widest">
+              {nextRankThreshold - vocab.length} more words to reach the next sub-rank.
+            </p>
+          </div>
+        </div>
+        <div className="absolute top-[-20%] right-[-10%] w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div 
@@ -1302,7 +1372,7 @@ const WritingPractice = () => {
   );
 };
 const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
-  const { user, isDemo } = useContext(AuthContext);
+  const { user, isDemo, profile } = useContext(AuthContext);
   const [japanese, setJapanese] = useState('');
   const [meaning, setMeaning] = useState('');
   const [romaji, setRomaji] = useState('');
@@ -1347,10 +1417,32 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
           ...vocabData
         };
         localStorage.setItem('komorebi_vocab', JSON.stringify([newVocab, ...localVocab]));
+        
+        // Award credits and update rank
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        const newWordCount = localVocab.length + 1;
+        const { rank: newRank, title: newTitle } = calculateRank(newWordCount);
+        localStorage.setItem('komorebi_profile', JSON.stringify({ 
+          ...p, 
+          credits: (p.credits || 0) + 10,
+          rank: newRank,
+          title: newTitle
+        }));
+        
         window.dispatchEvent(new Event('vocab_update'));
       } else if (user) {
         const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
         await addDoc(vocabRef, vocabData);
+        
+        // Update profile
+        const profileRef = doc(db, 'users', user.uid);
+        const newWordCount = vocab.length + 1;
+        const { rank: newRank, title: newTitle } = calculateRank(newWordCount);
+        await updateDoc(profileRef, {
+          credits: (profile?.credits || 0) + 10,
+          rank: newRank,
+          title: newTitle
+        });
       }
       
       setJapanese('');
@@ -1986,7 +2078,11 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
               <div className="flex-1 space-y-1">
                 <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Current Identity</div>
                 <div className="text-xl font-editorial italic text-stone-900">{name || 'Learner'}</div>
-                <div className="text-[10px] text-stone-400 font-serif italic">Level 12 · {vocab.length} words mastered</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Rank {profile?.rank || 'E5'}</div>
+                  <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">{profile?.credits || 0} Credits</div>
+                </div>
+                <div className="text-[10px] text-stone-400 font-serif italic">{vocab.length} words mastered</div>
               </div>
             </div>
 
@@ -2017,6 +2113,30 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                   className="w-full p-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-stone-200 outline-none transition-all"
                   placeholder="Enter your name..."
                 />
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Current Title</label>
+                <div className="w-full p-4 bg-stone-900 text-amber-400 rounded-2xl text-sm font-bold border border-stone-800 shadow-inner flex items-center justify-between">
+                  {profile?.title || 'Novice Learner'}
+                  <Trophy className="w-4 h-4" />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Rank</label>
+                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-900 text-sm font-bold border border-stone-100/50 flex items-center justify-between">
+                  {profile?.rank || 'E5'}
+                  <span className="text-[10px] text-stone-400 font-normal uppercase tracking-widest">Level</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Credits</label>
+                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-900 text-sm font-bold border border-stone-100/50 flex items-center justify-between">
+                  {profile?.credits || 0}
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -2218,9 +2338,799 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   );
 };
 
+const Shop = () => {
+  const { profile, user, isDemo } = useContext(AuthContext);
+  const [buying, setBuying] = useState<string | null>(null);
+
+  const shopItems = [
+    { id: 'tatami', name: 'Tatami Mats', price: 100, icon: '🌾', description: 'Traditional straw flooring.' },
+    { id: 'shoji', name: 'Shoji Screen', price: 250, icon: '⛩️', description: 'Paper sliding doors.' },
+    { id: 'bonsai', name: 'Bonsai Tree', price: 500, icon: '🌳', description: 'A miniature masterpiece.' },
+    { id: 'katana', name: 'Decorative Katana', price: 1000, icon: '⚔️', description: 'For the true warrior.' },
+    { id: 'kotatsu', name: 'Kotatsu Table', price: 800, icon: '🍵', description: 'Stay warm in winter.' },
+    { id: 'scroll', name: 'Kakejiku Scroll', price: 300, icon: '📜', description: 'Elegant wall art.' },
+  ];
+
+  const handleBuy = async (item: typeof shopItems[0]) => {
+    if ((profile?.credits || 0) < item.price) return;
+    if (profile?.roomItems?.includes(item.id)) return;
+
+    setBuying(item.id);
+    try {
+      const updates = {
+        credits: (profile?.credits || 0) - item.price,
+        roomItems: [...(profile?.roomItems || []), item.id]
+      };
+
+      if (isDemo) {
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, ...updates }));
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid), updates);
+      }
+    } finally {
+      setBuying(null);
+    }
+  };
+
+  const buyCredits = async (amount: number) => {
+    setBuying(`credits-${amount}`);
+    try {
+      const updates = {
+        credits: (profile?.credits || 0) + amount
+      };
+      if (isDemo) {
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, ...updates }));
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid), updates);
+      }
+    } finally {
+      setBuying(null);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-12">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Zen Shop</h2>
+          <p className="text-stone-500 font-serif italic">Spend your hard-earned credits on your room.</p>
+        </div>
+        <div className="bg-stone-900 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg">
+          <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+          <span className="font-bold">{profile?.credits || 0} Credits</span>
+        </div>
+      </div>
+
+      <section className="space-y-6">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Room Decorations</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {shopItems.map(item => {
+            const owned = profile?.roomItems?.includes(item.id);
+            const canAfford = (profile?.credits || 0) >= item.price;
+
+            return (
+              <motion.div 
+                key={item.id}
+                whileHover={{ y: -5 }}
+                className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm flex flex-col"
+              >
+                <div className="w-16 h-16 bg-stone-50 rounded-2xl flex items-center justify-center text-3xl mb-4">
+                  {item.icon}
+                </div>
+                <h3 className="text-lg font-bold text-stone-900 mb-1">{item.name}</h3>
+                <p className="text-xs text-stone-500 font-serif italic mb-6 flex-1">{item.description}</p>
+                
+                <button
+                  onClick={() => handleBuy(item)}
+                  disabled={owned || !canAfford || buying === item.id}
+                  className={cn(
+                    "w-full py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2",
+                    owned 
+                      ? "bg-emerald-50 text-emerald-600 cursor-default" 
+                      : canAfford 
+                        ? "bg-stone-900 text-white hover:bg-stone-800 shadow-lg shadow-stone-100" 
+                        : "bg-stone-100 text-stone-400 cursor-not-allowed"
+                  )}
+                >
+                  {buying === item.id ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : owned ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Owned
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      {item.price} Credits
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="pt-12 border-t border-stone-100">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400 mb-8">Purchase Credits</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { amount: 500, price: "$4.99", label: "Small Pouch" },
+            { amount: 1500, price: "$12.99", label: "Medium Sack", popular: true },
+            { amount: 5000, price: "$39.99", label: "Large Chest" },
+          ].map((tier) => (
+            <motion.div 
+              key={tier.amount}
+              whileHover={{ y: -4 }}
+              className={cn(
+                "p-8 rounded-[3rem] border-2 flex flex-col items-center text-center relative transition-all",
+                tier.popular ? "border-stone-900 bg-stone-900 text-white shadow-2xl" : "border-stone-100 bg-white text-stone-900"
+              )}
+            >
+              {tier.popular && (
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-amber-400 text-stone-900 text-[10px] font-bold uppercase tracking-widest px-4 py-1 rounded-full">
+                  Most Popular
+                </div>
+              )}
+              <div className="p-4 bg-amber-100 rounded-3xl mb-6">
+                <Zap className="w-8 h-8 text-amber-600 fill-amber-600" />
+              </div>
+              <h3 className="text-2xl font-editorial italic mb-1">{tier.label}</h3>
+              <p className={cn("text-[10px] font-bold uppercase tracking-widest mb-6", tier.popular ? "text-stone-400" : "text-stone-400")}>
+                {tier.amount} Credits
+              </p>
+              <div className="text-3xl font-bold mb-8">{tier.price}</div>
+              <button 
+                onClick={() => buyCredits(tier.amount)}
+                disabled={buying === `credits-${tier.amount}`}
+                className={cn(
+                  "w-full py-4 rounded-2xl font-bold text-sm transition-all active:scale-95",
+                  tier.popular ? "bg-white text-stone-900 hover:bg-stone-50" : "bg-stone-900 text-white hover:bg-stone-800 shadow-lg"
+                )}
+              >
+                {buying === `credits-${tier.amount}` ? "Processing..." : "Buy Now"}
+              </button>
+            </motion.div>
+          ))}
+        </div>
+        <p className="text-center text-stone-400 text-[10px] mt-8 font-serif italic">
+          * This is a simulation. No real money will be charged.
+        </p>
+      </section>
+    </div>
+  );
+};
+
+const MyRoom = () => {
+  const { profile, user, isDemo } = useContext(AuthContext);
+  const [roomName, setRoomName] = useState(profile?.roomName || 'My Zen Space');
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTheme, setActiveTheme] = useState(profile?.roomTheme || 'classic');
+
+  const handleSaveName = async () => {
+    try {
+      if (isDemo) {
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, roomName }));
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid), { roomName });
+      }
+      setIsEditing(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleThemeChange = async (theme: string) => {
+    setActiveTheme(theme);
+    try {
+      if (isDemo) {
+        const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+        localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, roomTheme: theme }));
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid), { roomTheme: theme });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const themes = {
+    classic: { bg: 'bg-[#f5f2ed]', floor: 'bg-stone-200', accent: 'border-stone-900', particles: [] },
+    midnight: { bg: 'bg-stone-950', floor: 'bg-stone-900', accent: 'border-amber-400', particles: ['✨', '⭐', '✨'] },
+    forest: { bg: 'bg-emerald-950', floor: 'bg-emerald-900', accent: 'border-emerald-400', particles: ['🍃', '🍂', '🍃'] },
+    sakura: { bg: 'bg-pink-50', floor: 'bg-pink-100', accent: 'border-pink-400', particles: ['🌸', '🌸', '🌸'] },
+    zen: { bg: 'bg-stone-50', floor: 'bg-stone-100', accent: 'border-stone-400', particles: ['🪨', '🎋', '🪨'] },
+  };
+
+  const shopItems = [
+    { id: 'tatami', icon: '🌾', name: 'Tatami Mats', description: 'Traditional straw flooring for a grounded feel.' },
+    { id: 'shoji', icon: '⛩️', name: 'Shoji Screens', description: 'Paper sliding doors that filter soft, natural light.' },
+    { id: 'bonsai', icon: '🌳', name: 'Ancient Bonsai', description: 'A miniature tree that has witnessed centuries.' },
+    { id: 'katana', icon: '⚔️', name: 'Ancestral Katana', description: 'A blade forged in the fires of discipline.' },
+    { id: 'kotatsu', icon: '🍵', name: 'Warm Kotatsu', description: 'A heated table for cozy study sessions.' },
+    { id: 'scroll', icon: '📜', name: 'Wisdom Scroll', description: 'Hand-painted calligraphy of ancient proverbs.' },
+  ];
+
+  const ownedItems = shopItems.filter(i => profile?.roomItems?.includes(i.id));
+  const currentTheme = themes[activeTheme as keyof typeof themes] || themes.classic;
+  const sanctuaryLevel = Math.floor((ownedItems.length * 2) + (SOLO_LEVELING_RANKS.indexOf(profile?.rank || 'E5') / 2));
+
+  const [itemMessage, setItemMessage] = useState<string | null>(null);
+
+  const handleItemClick = (name: string) => {
+    const messages = [
+      `The ${name} brings a sense of peace to the room.`,
+      `You feel more focused near the ${name}.`,
+      `The ${name} reminds you of your progress.`,
+      `A fine choice of decoration, the ${name}.`
+    ];
+    setItemMessage(messages[Math.floor(Math.random() * messages.length)]);
+    setTimeout(() => setItemMessage(null), 3000);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="flex items-center gap-4">
+          {isEditing ? (
+            <div className="flex gap-2">
+              <input 
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                className="text-4xl font-editorial italic text-stone-900 bg-transparent border-b-2 border-stone-900 outline-none"
+                autoFocus
+              />
+              <button onClick={handleSaveName} className="p-3 bg-stone-900 text-white rounded-2xl shadow-lg">
+                <Check className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-5xl font-editorial italic text-stone-900">{roomName}</h2>
+              <button onClick={() => setIsEditing(true)} className="p-3 text-stone-400 hover:text-stone-900 hover:bg-stone-50 rounded-2xl transition-all">
+                <Pencil className="w-5 h-5" />
+              </button>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-3 bg-white/50 p-2 rounded-full border border-stone-100 shadow-sm">
+          {Object.keys(themes).map(t => (
+            <button
+              key={t}
+              onClick={() => handleThemeChange(t)}
+              title={t.charAt(0).toUpperCase() + t.slice(1)}
+              className={cn(
+                "w-8 h-8 rounded-full border-2 transition-all",
+                activeTheme === t ? "border-stone-900 scale-110 shadow-md" : "border-transparent opacity-50 hover:opacity-100 hover:scale-105",
+                themes[t as keyof typeof themes].bg
+              )}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cn(
+        "relative aspect-[21/9] rounded-[4rem] border-[12px] shadow-2xl overflow-hidden flex flex-col transition-all duration-700",
+        currentTheme.bg,
+        currentTheme.accent
+      )}>
+        {/* Atmosphere Particles */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {currentTheme.particles.map((p, i) => (
+            <motion.div
+              key={i}
+              initial={{ y: -20, x: Math.random() * 100 + '%' }}
+              animate={{ 
+                y: ['0%', '100%'],
+                x: [Math.random() * 100 + '%', (Math.random() * 100 - 10) + '%'],
+                rotate: [0, 360]
+              }}
+              transition={{ 
+                duration: 10 + Math.random() * 10, 
+                repeat: Infinity, 
+                ease: "linear",
+                delay: i * 2
+              }}
+              className="absolute text-2xl opacity-40"
+            >
+              {p}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Wall Decorations */}
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 flex gap-24 items-start z-20">
+          {profile?.roomItems?.includes('scroll') && (
+            <motion.div 
+              initial={{ y: -100 }}
+              animate={{ y: 0 }}
+              whileHover={{ scale: 1.1, rotate: -2 }}
+              onClick={() => handleItemClick('Wisdom Scroll')}
+              className="text-9xl filter drop-shadow-2xl cursor-pointer"
+            >
+              📜
+            </motion.div>
+          )}
+          {profile?.roomItems?.includes('katana') && (
+            <motion.div 
+              initial={{ x: 100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              whileHover={{ scale: 1.1, rotate: 50 }}
+              onClick={() => handleItemClick('Ancestral Katana')}
+              className="text-8xl filter drop-shadow-2xl rotate-45 cursor-pointer"
+            >
+              ⚔️
+            </motion.div>
+          )}
+        </div>
+
+        {/* Main Floor Area */}
+        <div className="flex-1 relative flex items-end justify-center pb-12 gap-12 z-20">
+          {profile?.roomItems?.includes('bonsai') && (
+            <motion.div 
+              whileHover={{ scale: 1.1 }}
+              onClick={() => handleItemClick('Ancient Bonsai')}
+              className="text-8xl filter drop-shadow-xl cursor-pointer"
+            >
+              🌳
+            </motion.div>
+          )}
+          {profile?.roomItems?.includes('kotatsu') && (
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              onClick={() => handleItemClick('Warm Kotatsu')}
+              className="text-9xl filter drop-shadow-xl cursor-pointer"
+            >
+              🍵
+            </motion.div>
+          )}
+          {ownedItems.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-12">
+              <div className="text-8xl opacity-10 mb-6 animate-float">🏯</div>
+              <p className="text-stone-400 font-serif italic text-lg">Your sanctuary awaits its first treasures.</p>
+              <p className="text-stone-300 text-xs mt-2 font-bold uppercase tracking-widest">Visit the Zen Shop to begin</p>
+            </div>
+          )}
+        </div>
+
+        {/* Item Message Tooltip */}
+        <AnimatePresence>
+          {itemMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-stone-900 text-white px-6 py-2 rounded-full text-xs font-serif italic z-50 shadow-2xl border border-white/10"
+            >
+              {itemMessage}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floor */}
+        <div className={cn(
+          "h-24 w-full transition-all duration-700 relative z-10",
+          profile?.roomItems?.includes('tatami') ? "bg-[#d4c59f] border-t-4 border-[#b8a87d]" : currentTheme.floor
+        )}>
+          {profile?.roomItems?.includes('tatami') && (
+            <div className="absolute inset-0 opacity-20 pointer-events-none" 
+                 style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+          )}
+        </div>
+        
+        {/* Shoji Screen Effect */}
+        {profile?.roomItems?.includes('shoji') && (
+          <>
+            <div className="absolute top-0 left-0 bottom-0 w-20 bg-white/30 border-r-2 border-stone-900/10 backdrop-blur-[2px] z-30" />
+            <div className="absolute top-0 right-0 bottom-0 w-20 bg-white/30 border-l-2 border-stone-900/10 backdrop-blur-[2px] z-30" />
+          </>
+        )}
+
+        {/* Lighting Overlay */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/10 to-transparent z-40" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="bg-white p-10 rounded-[3rem] border border-stone-100 shadow-xl shadow-stone-200/50 flex flex-col justify-between">
+          <div>
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 mb-6">Collection Progress</h3>
+            <div className="flex items-end gap-2 mb-2">
+              <span className="text-5xl font-bold text-stone-900">{ownedItems.length}</span>
+              <span className="text-stone-300 font-bold mb-1">/ {shopItems.length}</span>
+            </div>
+            <p className="text-xs text-stone-500 font-serif italic">Treasures acquired from the Zen Shop.</p>
+          </div>
+          <div className="mt-8 h-2 bg-stone-50 rounded-full overflow-hidden">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${(ownedItems.length / shopItems.length) * 100}%` }}
+              className="h-full bg-stone-900"
+            />
+          </div>
+        </div>
+
+        <div className="bg-stone-900 p-10 rounded-[3rem] text-white shadow-2xl shadow-stone-900/20">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500 mb-6">Current Standing</h3>
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center text-4xl font-bold text-amber-400 border border-white/10">
+              {profile?.rank || 'E5'}
+            </div>
+            <div className="space-y-1">
+              <div className="text-xl font-editorial italic">{profile?.title || 'Novice'}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-500">Rank Level</div>
+            </div>
+          </div>
+          <div className="mt-8 pt-8 border-t border-white/5 flex flex-col gap-4">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-stone-400 font-serif italic">Sanctuary Level</span>
+              <span className="text-xs font-bold text-amber-400">LVL {sanctuaryLevel}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-stone-400 font-serif italic">Atmosphere</span>
+              <span className="text-xs font-bold text-amber-400">{ownedItems.length * 15 + (activeTheme !== 'classic' ? 10 : 0)}% ZEN</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-emerald-50 p-10 rounded-[3rem] border border-emerald-100 flex flex-col justify-between">
+          <div>
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/50 mb-6">Daily Wisdom</h3>
+            <p className="text-emerald-900 font-serif italic text-lg leading-relaxed">
+              "The bamboo that bends is stronger than the oak that resists."
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-emerald-600/40">
+            <div className="w-1 h-1 rounded-full bg-current" />
+            <div className="w-1 h-1 rounded-full bg-current" />
+            <div className="w-1 h-1 rounded-full bg-current" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const RankTest = ({ vocab }: { vocab: Vocabulary[] }) => {
+  const { profile, user, isDemo } = useContext(AuthContext);
+  const [step, setStep] = useState<'intro' | 'quiz' | 'result' | 'rankup'>('intro');
+  const [score, setScore] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [questions, setQuestions] = useState<{ q: string, a: string, options: string[] }[]>([]);
+  const [awarding, setAwarding] = useState(false);
+  const [newRank, setNewRank] = useState<string | null>(null);
+  const [sfx, setSfx] = useState<{ id: number, text: string, x: number, y: number }[]>([]);
+
+  const triggerSfx = (text: string) => {
+    const id = Date.now();
+    const x = Math.random() * 60 + 20;
+    const y = Math.random() * 40 + 30;
+    setSfx(prev => [...prev, { id, text, x, y }]);
+    setTimeout(() => setSfx(prev => prev.filter(s => s.id !== id)), 1000);
+  };
+
+  const startTest = () => {
+    let testQuestions = [];
+    
+    if (vocab.length >= 5) {
+      const shuffled = [...vocab].sort(() => 0.5 - Math.random());
+      testQuestions = shuffled.slice(0, 5).map(v => {
+        const otherMeanings = vocab
+          .filter(ov => ov.id !== v.id)
+          .map(ov => ov.meaning)
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 3);
+        
+        const options = [v.meaning, ...otherMeanings].sort(() => 0.5 - Math.random());
+        
+        return {
+          q: v.japanese,
+          a: v.meaning,
+          options
+        };
+      });
+    } else {
+      testQuestions = [
+        { q: '木', a: 'Ki', options: ['Ki', 'Mizu', 'Hi', 'Tsuchi'] },
+        { q: '水', a: 'Mizu', options: ['Mizu', 'Ki', 'Hi', 'Yama'] },
+        { q: '火', a: 'Hi', options: ['Hi', 'Ki', 'Mizu', 'Kaze'] },
+        { q: '山', a: 'Yama', options: ['Yama', 'Kawa', 'Umi', 'Mori'] },
+        { q: '人', a: 'Hito', options: ['Hito', 'Inu', 'Neko', 'Tori'] },
+      ];
+    }
+    
+    setQuestions(testQuestions);
+    setStep('quiz');
+    setScore(0);
+    setCurrentQuestion(0);
+  };
+
+  const handleAnswer = async (answer: string) => {
+    const isCorrect = answer === questions[currentQuestion].a;
+    const newScore = isCorrect ? score + 1 : score;
+    
+    if (isCorrect) {
+      setScore(newScore);
+      triggerSfx('PERFECT!');
+    } else {
+      triggerSfx('MISS');
+    }
+
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(c => c + 1);
+    } else {
+      setStep('result');
+      if (newScore === questions.length) {
+        const next = getNextRank(profile?.rank || 'E5');
+        if (next !== profile?.rank) {
+          setNewRank(next);
+          // Auto transition to rankup after a delay
+          setTimeout(() => setStep('rankup'), 2000);
+        }
+      }
+
+      if (newScore > 0) {
+        setAwarding(true);
+        try {
+          const bonus = newScore * 20;
+          const updates: any = { credits: (profile?.credits || 0) + bonus };
+          
+          if (newScore === questions.length) {
+            const next = getNextRank(profile?.rank || 'E5');
+            if (next !== profile?.rank) {
+              updates.rank = next;
+            }
+          }
+
+          if (isDemo) {
+            const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
+            localStorage.setItem('komorebi_profile', JSON.stringify({ ...p, ...updates }));
+          } else if (user) {
+            await updateDoc(doc(db, 'users', user.uid), updates);
+          }
+        } finally {
+          setAwarding(false);
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="max-w-xl mx-auto">
+      <AnimatePresence mode="wait">
+        {step === 'intro' && (
+          <motion.div 
+            key="intro"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.1 }}
+            className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-8 relative overflow-hidden"
+          >
+            {/* Quest Header Style */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-stone-900" />
+            <div className="absolute top-4 right-8 text-[10px] font-bold text-stone-300 uppercase tracking-[0.3em]">Quest ID: #ADV-001</div>
+
+            <div className="w-24 h-24 bg-stone-900 rounded-3xl mx-auto flex items-center justify-center text-4xl shadow-lg rotate-3 relative z-10">
+              <Trophy className="w-12 h-12 text-amber-400" />
+              <div className="absolute -top-2 -right-2 w-8 h-8 bg-amber-400 rounded-full flex items-center justify-center text-stone-900 text-xs font-bold border-4 border-white">!</div>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-3xl font-editorial italic text-stone-900">Rank Advancement Quest</h2>
+              <p className="text-stone-500 font-serif italic">"The system has detected your growth. A new trial awaits."</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div className="p-6 bg-stone-50 rounded-3xl border border-stone-100 text-left space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Current Status</h4>
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">ACTIVE</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-xl border border-stone-200 flex items-center justify-center text-xl font-bold">
+                    {profile?.rank || 'E5'}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold uppercase text-stone-400">
+                      <span>Progression</span>
+                      <span>{Math.floor((SOLO_LEVELING_RANKS.indexOf(profile?.rank || 'E5') / SOLO_LEVELING_RANKS.length) * 100)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(SOLO_LEVELING_RANKS.indexOf(profile?.rank || 'E5') / SOLO_LEVELING_RANKS.length) * 100}%` }}
+                        className="h-full bg-stone-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100 text-left">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-emerald-600/60 mb-4">Quest Objectives</h4>
+                <ul className="text-xs text-emerald-900 space-y-3 font-serif italic">
+                  <li className="flex items-center gap-3">
+                    <div className="w-4 h-4 rounded-full border border-emerald-300 flex items-center justify-center text-[8px] font-bold">1</div>
+                    Achieve a 100% accuracy rate in the evaluation.
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-4 h-4 rounded-full border border-emerald-300 flex items-center justify-center text-[8px] font-bold">2</div>
+                    Demonstrate mastery of current vocabulary set.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button 
+                onClick={startTest}
+                className="w-full py-5 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 flex items-center justify-center gap-3 group"
+              >
+                <span>Accept Quest</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <p className="text-[10px] text-stone-400 mt-4 font-bold uppercase tracking-widest">Penalty for failure: None</p>
+            </div>
+          </motion.div>
+        )}
+
+        {step === 'quiz' && (
+          <motion.div 
+            key="quiz"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-8"
+          >
+            <div className="flex justify-between items-center">
+              <div className="text-xs font-bold uppercase tracking-widest text-stone-400">Question {currentQuestion + 1} / {questions.length}</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-3 py-1 rounded-full">Rank: {profile?.rank}</div>
+            </div>
+            
+            <div className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center relative">
+              {/* Visual SFX Layer */}
+              <AnimatePresence>
+                {sfx.map(s => (
+                  <motion.div
+                    key={s.id}
+                    initial={{ opacity: 0, y: s.y, x: s.x + '%', scale: 0.5 }}
+                    animate={{ opacity: 1, y: s.y - 100, scale: 1.5 }}
+                    exit={{ opacity: 0 }}
+                    className={cn(
+                      "absolute pointer-events-none font-bold text-2xl z-50 italic tracking-tighter",
+                      s.text === 'PERFECT!' ? "text-amber-500" : "text-stone-400"
+                    )}
+                  >
+                    {s.text}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              <div className="text-7xl font-bold text-stone-900 mb-8">{questions[currentQuestion].q}</div>
+              <div className="grid grid-cols-2 gap-4">
+                {questions[currentQuestion].options.map(opt => (
+                  <button 
+                    key={opt}
+                    onClick={() => handleAnswer(opt)}
+                    className="py-4 bg-stone-50 hover:bg-stone-900 hover:text-white rounded-2xl font-bold transition-all border border-stone-100"
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {step === 'result' && (
+          <motion.div 
+            key="result"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-12 rounded-[3rem] border border-stone-100 shadow-xl text-center space-y-8"
+          >
+            <div className="text-6xl">{score === questions.length ? '🎊' : '💪'}</div>
+            <div className="space-y-2">
+              <h2 className="text-3xl font-editorial italic text-stone-900">Evaluation Complete</h2>
+              <p className="text-stone-500 font-serif italic">You scored {score} out of {questions.length}.</p>
+            </div>
+            <div className="p-6 bg-stone-50 rounded-3xl border border-stone-100">
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Performance Bonus</div>
+              <div className="text-2xl font-bold text-stone-900">+{score * 20} Credits</div>
+            </div>
+            {score === questions.length && (
+              <div className="text-emerald-600 font-bold animate-pulse">
+                PERFECT SCORE! PREPARING RANK ADVANCEMENT...
+              </div>
+            )}
+            <button 
+              onClick={() => setStep('intro')}
+              className="w-full py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl"
+            >
+              Return to Dojo
+            </button>
+          </motion.div>
+        )}
+
+        {step === 'rankup' && (
+          <motion.div 
+            key="rankup"
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="fixed inset-0 z-[200] bg-stone-900 flex items-center justify-center p-8"
+          >
+            <div className="text-center space-y-12 max-w-lg">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="text-stone-400 text-xs font-bold uppercase tracking-[0.5em]"
+              >
+                System Notification
+              </motion.div>
+              
+              <div className="space-y-4">
+                <motion.h2 
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.8, type: "spring" }}
+                  className="text-6xl font-editorial italic text-white"
+                >
+                  Rank Up
+                </motion.h2>
+                <div className="h-1 w-24 bg-amber-400 mx-auto" />
+              </div>
+
+              <div className="flex items-center justify-center gap-12">
+                <div className="text-center">
+                  <div className="text-stone-500 text-[10px] font-bold uppercase mb-2">Former</div>
+                  <div className="text-4xl font-bold text-stone-600">{profile?.rank}</div>
+                </div>
+                <ChevronRight className="w-8 h-8 text-amber-400 animate-pulse" />
+                <div className="text-center">
+                  <div className="text-amber-400 text-[10px] font-bold uppercase mb-2">Current</div>
+                  <div className="text-6xl font-bold text-white shadow-lg shadow-amber-400/20">{newRank}</div>
+                </div>
+              </div>
+
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.5 }}
+                className="text-stone-400 font-serif italic"
+              >
+                Your limits have been surpassed. The path to the S-Rank continues.
+              </motion.p>
+
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 2 }}
+                onClick={() => setStep('intro')}
+                className="px-12 py-4 bg-white text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all"
+              >
+                Confirm Ascension
+              </motion.button>
+            </div>
+            
+            {/* Background Effects */}
+            <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-amber-400/10 rounded-full blur-[120px]" />
+              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const Chatbot = () => {
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
-    { role: 'model', text: "Konnichiwa! I'm your Japanese culture and language assistant. Ask me anything about Japan, its people, or the language!" }
+    { role: 'model', text: "Konnichiwa! I'm Sensei AI, your dedicated Japanese language tutor. How can I assist your learning journey today?" }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2237,7 +3147,7 @@ const Chatbot = () => {
     if (!input.trim() || loading) return;
 
     if (!getApiKey()) {
-      setMessages(prev => [...prev, { role: 'model', text: "I need an API key to work! Please add your `GEMINI_API_KEY` in the app settings (⚙️ icon -> Secrets)." }]);
+      setMessages(prev => [...prev, { role: 'model', text: "Please add your Gemini API key in the settings to enable Sensei Chat." }]);
       return;
     }
 
@@ -2248,96 +3158,107 @@ const Chatbot = () => {
 
     try {
       const ai = getAI();
-      if (!ai) throw new Error("AI Key not found. Please add your API key in settings.");
+      if (!ai) throw new Error("AI Key not found.");
 
       const chat = ai.chats.create({
         model: "gemini-flash-latest",
         config: {
-          systemInstruction: "You are a helpful and knowledgeable assistant specializing in Japanese culture, people, and language. Your tone is polite, encouraging, and informative. You can provide cultural context, explain grammar points, and suggest travel tips. Keep responses concise and engaging.",
+          systemInstruction: "You are Sensei AI, a professional and highly knowledgeable Japanese language tutor. Your tone is encouraging, academic, and precise. You specialize in explaining complex grammar, kanji origins, and cultural nuances. Always provide examples in Japanese with furigana and English translations. Keep responses structured and professional.",
         },
       });
 
       const response = await chat.sendMessage({ message: userMsg });
-      const modelText = response.text || "I'm sorry, I couldn't process that.";
+      const modelText = response.text || "I apologize, but I am unable to process your request at the moment.";
       setMessages(prev => [...prev, { role: 'model', text: modelText }]);
     } catch (error: any) {
-      console.error("Chat Error:", error);
-      setMessages(prev => [...prev, { role: 'model', text: `Error: ${error.message || "Something went wrong."}` }]);
+      setMessages(prev => [...prev, { role: 'model', text: `Sensei encountered an error: ${error.message}` }]);
     } finally {
       setLoading(false);
     }
   };
 
+  const clearChat = () => {
+    setMessages([{ role: 'model', text: "Konnichiwa! I'm Sensei AI, your dedicated Japanese language tutor. How can I assist your learning journey today?" }]);
+  };
+
   return (
-    <div className="max-w-3xl mx-auto h-[calc(100vh-12rem)] flex flex-col">
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Sensei Chat</h2>
-        <p className="text-stone-500 font-serif italic">Talk about Japan, the language, and culture.</p>
-      </motion.div>
-
-      {!getApiKey() && (
-        <div className="mb-6">
-          <MissingApiKeyWarning />
+    <div className="max-w-4xl mx-auto h-[calc(100vh-12rem)] flex flex-col bg-white rounded-[3rem] shadow-2xl shadow-stone-200/50 border border-stone-100 overflow-hidden">
+      {/* Header */}
+      <div className="px-10 py-8 border-b border-stone-100 bg-stone-50/50 flex items-center justify-between">
+        <div className="flex items-center gap-5">
+          <div className="w-14 h-14 bg-stone-900 rounded-[1.5rem] flex items-center justify-center shadow-xl shadow-stone-200">
+            <Bot className="w-7 h-7 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-editorial italic text-stone-900">Sensei AI</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-[0.2em]">Academic Assistant Active</span>
+            </div>
+          </div>
         </div>
-      )}
+        <button 
+          onClick={clearChat}
+          className="p-3 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-2xl transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Reset Session
+        </button>
+      </div>
 
-      <div className="flex-1 bg-white rounded-[3rem] border border-stone-100 shadow-xl overflow-hidden flex flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-          {messages.map((msg, i) => (
-            <motion.div 
-              key={i}
-              initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={cn(
-                "flex",
-                msg.role === 'user' ? "justify-end" : "justify-start"
-              )}
-            >
-              <div className={cn(
-                "max-w-[80%] p-5 rounded-3xl text-sm leading-relaxed",
-                msg.role === 'user' 
-                  ? "bg-stone-900 text-white rounded-tr-none" 
-                  : "bg-stone-50 text-stone-900 rounded-tl-none font-serif italic"
-              )}>
+      {/* Messages Area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar bg-[#fafafa]">
+        {messages.map((msg, i) => (
+          <div key={i} className={cn("flex", msg.role === 'user' ? "justify-end" : "justify-start")}>
+            <div className={cn(
+              "max-w-[85%] text-sm leading-relaxed relative group",
+              msg.role === 'user' 
+                ? "bg-stone-900 text-white px-8 py-6 rounded-[2.5rem] rounded-tr-none shadow-2xl shadow-stone-200" 
+                : "text-stone-800 bg-white px-8 py-6 rounded-[2.5rem] rounded-tl-none border border-stone-100 shadow-sm"
+            )}>
+              <div className="prose prose-sm max-w-none prose-stone dark:prose-invert">
                 <ReactMarkdown>{msg.text}</ReactMarkdown>
               </div>
-            </motion.div>
-          ))}
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-stone-50 p-5 rounded-3xl rounded-tl-none animate-pulse flex gap-2">
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce" />
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+              <div className={cn(
+                "absolute top-0 text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity",
+                msg.role === 'user' ? "right-0 -translate-y-6 text-stone-400" : "left-0 -translate-y-6 text-stone-400"
+              )}>
+                {msg.role === 'user' ? 'You' : 'Sensei AI'}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white px-8 py-6 rounded-[2.5rem] rounded-tl-none border border-stone-100 shadow-sm flex gap-2">
+              <div className="w-2 h-2 bg-stone-200 rounded-full animate-bounce" />
+              <div className="w-2 h-2 bg-stone-200 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="w-2 h-2 bg-stone-200 rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
+          </div>
+        )}
+      </div>
 
-        <motion.form 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          onSubmit={handleSend} 
-          className="p-6 bg-stone-50 border-t border-stone-100 flex gap-4"
-        >
+      {/* Input Area */}
+      <div className="p-8 bg-white border-t border-stone-100">
+        <form onSubmit={handleSend} className="relative flex items-center max-w-3xl mx-auto">
           <input 
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about Japan..."
-            className="flex-1 p-4 bg-white border-none rounded-2xl focus:ring-2 focus:ring-stone-200 outline-none transition-all font-serif italic"
+            placeholder="Ask Sensei about grammar, kanji, or culture..."
+            className="w-full p-6 pr-20 bg-stone-50 border-none rounded-[2rem] focus:ring-4 focus:ring-stone-100 outline-none transition-all text-sm shadow-inner placeholder:text-stone-300"
           />
           <button 
             type="submit"
             disabled={loading || !input.trim()}
-            className="p-4 bg-stone-900 text-white rounded-2xl shadow-lg hover:bg-stone-800 transition-all disabled:opacity-50 hover:scale-110 active:scale-95"
+            className="absolute right-3 p-4 bg-stone-900 text-white rounded-2xl shadow-xl hover:bg-stone-800 transition-all disabled:opacity-50 active:scale-95 group"
           >
-            <ChevronRight className="w-6 h-6" />
+            <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
           </button>
-        </motion.form>
+        </form>
+        <p className="text-center text-[10px] text-stone-300 mt-4 font-serif italic">
+          Sensei AI uses Gemini Flash for real-time linguistic analysis.
+        </p>
       </div>
     </div>
   );
@@ -3988,7 +4909,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game' | 'chatbot' | 'notebook' | 'invaders' | 'wordsearch'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game' | 'chatbot' | 'notebook' | 'invaders' | 'wordsearch' | 'shop' | 'room' | 'rankTest'>('dashboard');
 
   useEffect(() => {
     (window as any).setActiveTab = setActiveTab;
@@ -4011,7 +4932,11 @@ export default function App() {
           streakCount: 0,
           lastActiveDate: Timestamp.now(),
           dailyGoalMet: false,
-          xp: 0
+          xp: 0,
+          rank: 'E5',
+          credits: 0,
+          roomName: 'My Zen Space',
+          roomItems: []
         };
         localStorage.setItem('komorebi_profile', JSON.stringify(demoProfile));
       }
@@ -4064,7 +4989,12 @@ export default function App() {
           streakCount: 0,
           lastActiveDate: Timestamp.now(),
           dailyGoalMet: false,
-          xp: 0
+          xp: 0,
+          rank: 'E5',
+          credits: 0,
+          title: 'Novice Learner',
+          roomName: 'My Zen Space',
+          roomItems: []
         };
         setDoc(profileRef, newProfile).catch(e => console.error("Profile creation failed", e));
         setProfile(newProfile);
@@ -4127,6 +5057,11 @@ export default function App() {
         streakCount,
         dailyGoalMet,
         xp: 0,
+        rank: 'E5',
+        credits: 0,
+        title: 'Novice Learner',
+        roomName: 'My Zen Space',
+        roomItems: [],
         ...p,
         lastActiveDate: p.lastActiveDate?.seconds ? new Timestamp(p.lastActiveDate.seconds, p.lastActiveDate.nanoseconds) : Timestamp.now()
       });
@@ -4414,11 +5349,14 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
               {[
                 { id: 'vocabList', icon: Library, label: 'Vocabulary' },
                 { id: 'flashcards', icon: Layers, label: 'Review' },
+                { id: 'rankTest', icon: Trophy, label: 'Rank Test' },
+                { id: 'shop', icon: ShoppingBag, label: 'Zen Shop' },
+                { id: 'room', icon: Home, label: 'My Room' },
                 { id: 'game', icon: Gamepad2, label: 'Games' },
                 { id: 'dictionary', icon: BookOpen, label: 'Dictionary' },
                 { id: 'translator', icon: Languages, label: 'Translate' },
                 { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
-                { id: 'chatbot', icon: MessageSquare, label: 'Sensei Chat' },
+                { id: 'chatbot', icon: Bot, label: 'Sensei Chat' },
                 { id: 'notebook', icon: BookOpen, label: 'Notebook' },
                 { id: 'settings', icon: Settings2, label: 'Settings' },
               ].map((item) => (
@@ -4523,13 +5461,16 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
                 {[
                   { id: 'vocabList', icon: Library, label: 'Library' },
                   { id: 'flashcards', icon: Layers, label: 'Review' },
+                  { id: 'rankTest', icon: Trophy, label: 'Rank Test' },
+                  { id: 'shop', icon: ShoppingBag, label: 'Shop' },
+                  { id: 'room', icon: Home, label: 'Room' },
                   { id: 'game', icon: Gamepad2, label: 'Games' },
-                  { id: 'dictionary', icon: BookOpen, label: 'Dict' },
+                  { id: 'dictionary', icon: Search, label: 'Dict' },
                   { id: 'translator', icon: Languages, label: 'Translate' },
-                  { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
+                  { id: 'phrasebook', icon: Book, label: 'Phrases' },
                   { id: 'chatbot', icon: MessageSquare, label: 'Chat' },
-                  { id: 'notebook', icon: BookOpen, label: 'Notes' },
-                  { id: 'settings', icon: Settings2, label: 'Settings' },
+                  { id: 'notebook', icon: List, label: 'Notes' },
+                  { id: 'settings', icon: SettingsIcon, label: 'Settings' },
                 ].map((item) => (
                   <motion.button
                     key={item.id}
@@ -4603,6 +5544,9 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
                   {activeTab === 'wordsearch' && <WordSearch onBack={() => setActiveTab('game')} />}
                   {activeTab === 'chatbot' && <Chatbot />}
                   {activeTab === 'notebook' && <Notebook />}
+                  {activeTab === 'shop' && <Shop />}
+                  {activeTab === 'room' && <MyRoom />}
+                  {activeTab === 'rankTest' && <RankTest vocab={vocab} />}
                   {activeTab === 'settings' && <Settings vocab={vocab} />}
                 </motion.div>
               </AnimatePresence>

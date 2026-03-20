@@ -8,6 +8,11 @@ export interface UserProfile {
   lastActiveDate: Timestamp | null;
   dailyGoalMet: boolean;
   xp: number;
+  rank: string; // E5, E4, ..., SSS1
+  credits: number;
+  title?: string; // e.g., "Novice Learner", "Kanji Slayer"
+  roomName?: string;
+  roomItems?: string[]; // IDs of purchased items
   dailyGoal?: number;
   avatar?: string;
   preferredTTS?: 'native' | 'gemini';
