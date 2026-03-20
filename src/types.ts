@@ -10,6 +10,17 @@ export interface UserProfile {
   xp: number;
   dailyGoal?: number;
   avatar?: string;
+  preferredTTS?: 'native' | 'gemini';
+  notificationsEnabled?: boolean;
+}
+
+export interface Note {
+  id?: string;
+  title: string;
+  content: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  color?: string;
 }
 
 export interface Vocabulary {

@@ -10,6 +10,7 @@ export default defineConfig(({mode}) => {
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || ''),
       'process.env.GOOGLE_API_KEY': JSON.stringify(process.env.GOOGLE_API_KEY || env.GOOGLE_API_KEY || ''),
+      'process.env.GEMINI_API_EY': JSON.stringify(process.env.GEMINI_API_EY || env.GEMINI_API_EY || ''),
     },
     resolve: {
       alias: {

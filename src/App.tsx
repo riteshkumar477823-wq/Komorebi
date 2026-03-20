@@ -24,7 +24,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { UserProfile, Vocabulary, OperationType, FirestoreErrorInfo } from './types';
+import { UserProfile, Vocabulary, OperationType, FirestoreErrorInfo, Note } from './types';
 import { 
   Flame, 
   BookOpen, 
@@ -56,7 +56,9 @@ import {
   Timer,
   Ear,
   RefreshCw,
-  Zap
+  Zap,
+  ArrowLeft,
+  Check
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
@@ -70,6 +72,46 @@ import { hiragana, katakana } from './kanaData';
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// --- AI Key Management ---
+const getApiKey = () => {
+  // Try localStorage first (user manual entry)
+  const localKey = typeof window !== 'undefined' ? localStorage.getItem('komorebi_gemini_key') : null;
+  if (localKey) return localKey.trim();
+
+  // Try GEMINI_API_KEY first, then GOOGLE_API_KEY, and GEMINI_API_EY as fallback
+  const key = process.env.GEMINI_API_KEY || 
+         process.env.GOOGLE_API_KEY ||
+         process.env.GEMINI_API_EY ||
+         (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+         (import.meta as any).env?.VITE_GOOGLE_API_KEY ||
+         (import.meta as any).env?.VITE_GEMINI_API_EY ||
+         '';
+  return key.trim();
+};
+
+const getAI = () => {
+  const primaryKey = getApiKey();
+  const secondaryKey = (import.meta as any).env?.VITE_GEMINI_API_KEY_2 || '';
+  
+  // Simple rotation/fallback logic
+  const keys = [primaryKey, secondaryKey].filter(Boolean);
+  
+  if (keys.length === 0) {
+    console.warn("No Gemini API keys found in environment.");
+    return null;
+  }
+  
+  // Use primary by default, but could be extended to track failures
+  try {
+    const keyToUse = keys[0];
+    console.log(`Initializing AI with key starting with: ${keyToUse.substring(0, 4)}...`);
+    return new GoogleGenAI({ apiKey: keyToUse });
+  } catch (error) {
+    console.error("AI Initialization Error:", error);
+    return null;
+  }
+};
 
 // --- Hooks ---
 const useTTS = () => {
@@ -132,11 +174,10 @@ const useTTS = () => {
   };
 
   const playGemini = async (text: string) => {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("Gemini API Key is missing. Please add GOOGLE_API_KEY to your secrets.");
-    
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = getAI();
+      if (!ai) throw new Error("Gemini API Key is missing. Please add GEMINI_API_KEY to your secrets.");
+      
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `Say in Japanese: ${text}` }] }],
@@ -459,7 +500,10 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
   return (
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
           <button 
             onClick={() => (window as any).setActiveTab('settings')}
             className="text-3xl font-editorial italic text-stone-900 mb-0.5 hover:text-stone-600 transition-colors text-left"
@@ -484,8 +528,12 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
               </a>
             )}
           </div>
-        </div>
-        <div className="flex items-center gap-3">
+        </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="flex items-center gap-3"
+        >
           <div className="flex items-center gap-1.5 p-0.5 bg-white rounded-full border border-stone-100 shadow-sm">
             <button 
               onClick={() => setTTSMode('native')}
@@ -512,25 +560,28 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
             <Flame className="w-4 h-4 fill-orange-500" />
             <span className="font-bold text-base">{streak}</span>
           </div>
-        </div>
+        </motion.div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div 
-          whileHover={{ y: -2 }}
-          className="lg:col-span-2 p-6 bg-white rounded-[2rem] shadow-sm border border-stone-50 flex flex-col justify-between min-h-[220px] relative overflow-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ y: -4, scale: 1.01 }}
+          transition={{ duration: 0.4 }}
+          className="lg:col-span-2 p-6 bg-white rounded-[2rem] shadow-sm border border-stone-50 flex flex-col justify-between min-h-[220px] relative overflow-hidden group"
         >
-          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-700">
             <BookOpen className="w-32 h-32" />
           </div>
           <div className="relative z-10">
             <span className="text-stone-400 font-mono text-[8px] uppercase tracking-widest block mb-4">Word of the Day</span>
             <div className="flex items-end gap-4 mb-2">
-              <h3 className="text-6xl font-serif text-stone-900">{wordOfTheDay.japanese}</h3>
+              <h3 className="text-6xl font-serif text-stone-900 tracking-tight">{wordOfTheDay.japanese}</h3>
               <button 
                 onClick={() => play(wordOfTheDay.japanese)}
                 disabled={ttsLoading}
-                className="p-2 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all mb-2"
+                className="p-2 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all mb-2 hover:scale-110 active:scale-95"
               >
                 <Volume2 className={cn("w-4 h-4", ttsLoading && "animate-pulse")} />
               </button>
@@ -541,7 +592,7 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
           <div className="mt-6 flex gap-2">
             <button 
               onClick={() => (window as any).setActiveTab('dictionary')}
-              className="px-6 py-2.5 bg-stone-900 text-white rounded-full font-bold text-xs hover:bg-stone-800 transition-all shadow-md shadow-stone-100"
+              className="px-6 py-2.5 bg-stone-900 text-white rounded-full font-bold text-xs hover:bg-stone-800 transition-all shadow-md shadow-stone-100 hover:shadow-lg active:scale-95"
             >
               Dictionary
             </button>
@@ -549,7 +600,10 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
         </motion.div>
 
         <motion.div 
-          whileHover={{ y: -2 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          whileHover={{ y: -4, scale: 1.01 }}
           className="p-6 bg-[#fdfbf7] border border-stone-100 rounded-[2rem] shadow-sm flex flex-col justify-between min-h-[220px]"
         >
           <div>
@@ -566,12 +620,21 @@ const Dashboard = ({ vocabCount, vocab }: { vocabCount: number, vocab: Vocabular
               <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min((vocabCount / 5) * 100, 100)}%` }}
+                transition={{ duration: 1, ease: "easeOut" }}
                 className="h-full bg-stone-900"
               />
             </div>
             <div className="mt-3 flex justify-between items-end">
               <p className="text-xs font-bold text-stone-900 uppercase tracking-widest">{vocabCount} / 5 words</p>
-              {goalMet && <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Goal Met</span>}
+              {goalMet && (
+                <motion.span 
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest"
+                >
+                  Goal Met
+                </motion.span>
+              )}
             </div>
           </div>
         </motion.div>
@@ -846,14 +909,16 @@ const Translator = () => {
 
     setLoading(true);
     try {
-      const apiKey = getApiKey();
-      if (!apiKey) throw new Error("API Key not found. Please add GOOGLE_API_KEY to your secrets.");
+      const ai = getAI();
+      if (!ai) {
+        setResult("I need an API key to translate! Please add your `GEMINI_API_KEY` in the app settings (⚙️ icon -> Secrets).");
+        return;
+      }
 
-      const ai = new GoogleGenAI({ apiKey });
       const isJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(text);
       
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-flash-latest",
         contents: `Translate the following ${isJapanese ? "Japanese" : "English"} text to ${isJapanese ? "English" : "Japanese"}: "${text}". 
         Provide ONLY the translation. If it's a single word, provide the most common translation. 
         If it's Japanese, also include the Romaji in parentheses.`,
@@ -872,15 +937,23 @@ const Translator = () => {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="mb-10">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-10"
+      >
         <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Word Translator</h2>
         <p className="text-stone-500 font-serif italic">Fast, reliable word translations powered by Gemini AI.</p>
-      </div>
+      </motion.div>
 
       {!getApiKey() && <div className="mb-8"><MissingApiKeyWarning /></div>}
 
       <div className="space-y-6">
-        <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-stone-50">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-8 rounded-[3rem] shadow-sm border border-stone-50"
+        >
           <div className="relative">
             <input 
               type="text"
@@ -888,12 +961,12 @@ const Translator = () => {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleTranslate()}
               placeholder="Type a word in English or Japanese..."
-              className="w-full p-6 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-100 transition-all text-xl outline-none"
+              className="w-full p-6 bg-stone-50 border-none rounded-2xl focus:ring-2 focus:ring-stone-100 transition-all text-xl outline-none font-serif italic"
             />
             {text && (
               <button 
                 onClick={() => setText('')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-stone-300 hover:text-stone-500"
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-stone-300 hover:text-stone-500 transition-all hover:scale-110"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -903,7 +976,7 @@ const Translator = () => {
             <button 
               onClick={handleTranslate}
               disabled={loading || !text}
-              className="px-10 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100 disabled:opacity-50 flex items-center gap-2"
+              className="px-10 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100 disabled:opacity-50 flex items-center gap-2 hover:scale-105 active:scale-95"
             >
               {loading ? (
                 <>
@@ -918,7 +991,7 @@ const Translator = () => {
               )}
             </button>
           </div>
-        </div>
+        </motion.div>
 
         <AnimatePresence mode="wait">
           {result && (
@@ -1494,13 +1567,11 @@ const Dictionary = () => {
     setLoading(true);
     setShowCommon(false);
     try {
-      const apiKey = getApiKey();
-      if (!apiKey) throw new Error("API Key not found. Please add GOOGLE_API_KEY to your secrets.");
+      const ai = getAI();
+      if (!ai) throw new Error("API Key not found. Please add GEMINI_API_KEY to your secrets.");
 
-      const ai = new GoogleGenAI({ apiKey });
-      
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-flash-latest",
         contents: `Act as a professional Japanese-English dictionary. Provide a concise, structured definition for "${query}". 
         Include:
         1. Kanji/Kana
@@ -1523,29 +1594,38 @@ const Dictionary = () => {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="mb-8">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
         <h2 className="text-3xl font-editorial italic text-stone-900 mb-2">Japanese Dictionary</h2>
         <p className="text-stone-500 font-serif italic">Search for any word or browse common expressions below.</p>
-      </div>
+      </motion.div>
 
       {!getApiKey() && <div className="mb-8"><MissingApiKeyWarning /></div>}
 
-      <form onSubmit={handleSearch} className="relative mb-8">
+      <motion.form 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSearch} 
+        className="relative mb-8"
+      >
         <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
         <input 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search in Japanese or English..."
-          className="w-full p-6 pl-16 bg-white border-2 border-stone-100 rounded-[2rem] shadow-sm focus:border-stone-900 transition-all text-lg outline-none"
+          className="w-full p-6 pl-16 bg-white border-2 border-stone-100 rounded-[2rem] shadow-sm focus:border-stone-900 transition-all text-lg outline-none font-serif italic"
         />
         <button 
           type="submit"
           disabled={loading || !query}
-          className="absolute right-3 top-1/2 -translate-y-1/2 px-6 py-3 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-colors disabled:opacity-50"
+          className="absolute right-3 top-1/2 -translate-y-1/2 px-6 py-3 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-colors disabled:opacity-50 hover:scale-105 active:scale-95"
         >
           {loading ? "Searching..." : "Search"}
         </button>
-      </form>
+      </motion.form>
 
       <AnimatePresence mode="wait">
         {showCommon && !result && (
@@ -1833,6 +1913,7 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [name, setName] = useState(profile?.displayName || '');
   const [dailyGoal, setDailyGoal] = useState(profile?.dailyGoal || 5);
   const [avatar, setAvatar] = useState(profile?.avatar || '🦊');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(profile?.notificationsEnabled ?? true);
   const [saving, setSaving] = useState(false);
   const hasApiKey = !!getApiKey();
 
@@ -1844,7 +1925,8 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
       const updates = { 
         displayName: name, 
         dailyGoal: Number(dailyGoal),
-        avatar: avatar
+        avatar: avatar,
+        notificationsEnabled: notificationsEnabled
       };
       if (isDemo) {
         const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
@@ -1865,12 +1947,11 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
     setTestStatus('testing');
     setTestError(null);
     try {
-      const apiKey = getApiKey();
-      if (!apiKey) throw new Error("API Key is missing from the environment.");
+      const ai = getAI();
+      if (!ai) throw new Error("API Key is missing from the environment.");
       
-      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-flash-latest",
         contents: "Respond with 'OK'",
       });
       
@@ -1971,6 +2052,25 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
               </div>
             </div>
 
+            <div className="flex items-center justify-between p-6 bg-stone-50 rounded-[2rem] border border-stone-100">
+              <div className="space-y-1">
+                <div className="text-sm font-bold text-stone-900">Streak Notifications</div>
+                <div className="text-xs text-stone-500 font-serif italic">Get alerted 4 hours before your streak expires.</div>
+              </div>
+              <button 
+                onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                className={cn(
+                  "w-12 h-6 rounded-full transition-all relative p-1",
+                  notificationsEnabled ? "bg-stone-900" : "bg-stone-200"
+                )}
+              >
+                <motion.div 
+                  animate={{ x: notificationsEnabled ? 24 : 0 }}
+                  className="w-4 h-4 bg-white rounded-full shadow-sm"
+                />
+              </button>
+            </div>
+
             <div className="pt-4">
               <button 
                 onClick={handleSaveProfile}
@@ -2043,10 +2143,39 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                 "font-mono font-bold px-2 py-1 rounded-md",
                 hasApiKey ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50"
               )}>
-                {hasApiKey ? `Detected (Ends in ...${getApiKey().slice(-4)})` : 'Missing'}
+                {hasApiKey ? `Detected (Ends in ...${getApiKey().slice(-4) || '****'})` : 'Missing'}
               </span>
             </div>
             
+            <div className="pt-2">
+              <div className="text-[10px] uppercase tracking-wider text-stone-400 font-bold mb-2">Manual Key Entry (Optional)</div>
+              <div className="flex gap-2">
+                <input 
+                  type="password"
+                  placeholder="Paste GEMINI_API_KEY here..."
+                  className="flex-1 bg-white border border-stone-100 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-stone-200"
+                  onBlur={(e) => {
+                    if (e.target.value.trim()) {
+                      localStorage.setItem('komorebi_gemini_key', e.target.value.trim());
+                      window.location.reload();
+                    }
+                  }}
+                />
+                {localStorage.getItem('komorebi_gemini_key') && (
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem('komorebi_gemini_key');
+                      window.location.reload();
+                    }}
+                    className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-[10px] font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-stone-400 mt-2 italic">Use this if the automatic detection fails in your browser.</p>
+            </div>
+
             <div className="pt-2">
               <button 
                 onClick={handleTestAI}
@@ -2089,7 +2218,288 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   );
 };
 
-const Games = ({ vocab }: { vocab: Vocabulary[] }) => {
+const Chatbot = () => {
+  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
+    { role: 'model', text: "Konnichiwa! I'm your Japanese culture and language assistant. Ask me anything about Japan, its people, or the language!" }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    if (!getApiKey()) {
+      setMessages(prev => [...prev, { role: 'model', text: "I need an API key to work! Please add your `GEMINI_API_KEY` in the app settings (⚙️ icon -> Secrets)." }]);
+      return;
+    }
+
+    const userMsg = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setLoading(true);
+
+    try {
+      const ai = getAI();
+      if (!ai) throw new Error("AI Key not found. Please add your API key in settings.");
+
+      const chat = ai.chats.create({
+        model: "gemini-flash-latest",
+        config: {
+          systemInstruction: "You are a helpful and knowledgeable assistant specializing in Japanese culture, people, and language. Your tone is polite, encouraging, and informative. You can provide cultural context, explain grammar points, and suggest travel tips. Keep responses concise and engaging.",
+        },
+      });
+
+      const response = await chat.sendMessage({ message: userMsg });
+      const modelText = response.text || "I'm sorry, I couldn't process that.";
+      setMessages(prev => [...prev, { role: 'model', text: modelText }]);
+    } catch (error: any) {
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { role: 'model', text: `Error: ${error.message || "Something went wrong."}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto h-[calc(100vh-12rem)] flex flex-col">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Sensei Chat</h2>
+        <p className="text-stone-500 font-serif italic">Talk about Japan, the language, and culture.</p>
+      </motion.div>
+
+      {!getApiKey() && (
+        <div className="mb-6">
+          <MissingApiKeyWarning />
+        </div>
+      )}
+
+      <div className="flex-1 bg-white rounded-[3rem] border border-stone-100 shadow-xl overflow-hidden flex flex-col">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+          {messages.map((msg, i) => (
+            <motion.div 
+              key={i}
+              initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={cn(
+                "flex",
+                msg.role === 'user' ? "justify-end" : "justify-start"
+              )}
+            >
+              <div className={cn(
+                "max-w-[80%] p-5 rounded-3xl text-sm leading-relaxed",
+                msg.role === 'user' 
+                  ? "bg-stone-900 text-white rounded-tr-none" 
+                  : "bg-stone-50 text-stone-900 rounded-tl-none font-serif italic"
+              )}>
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
+              </div>
+            </motion.div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-stone-50 p-5 rounded-3xl rounded-tl-none animate-pulse flex gap-2">
+                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce" />
+                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <motion.form 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          onSubmit={handleSend} 
+          className="p-6 bg-stone-50 border-t border-stone-100 flex gap-4"
+        >
+          <input 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about Japan..."
+            className="flex-1 p-4 bg-white border-none rounded-2xl focus:ring-2 focus:ring-stone-200 outline-none transition-all font-serif italic"
+          />
+          <button 
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="p-4 bg-stone-900 text-white rounded-2xl shadow-lg hover:bg-stone-800 transition-all disabled:opacity-50 hover:scale-110 active:scale-95"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        </motion.form>
+      </div>
+    </div>
+  );
+};
+
+const Notebook = () => {
+  const { user, isDemo } = useContext(AuthContext);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newContent, setNewContent] = useState('');
+
+  useEffect(() => {
+    if (isDemo) {
+      const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      setNotes(localNotes);
+      setLoading(false);
+      return;
+    }
+
+    if (!user) return;
+    const notesRef = collection(db, 'users', user.uid, 'notes');
+    const q = query(notesRef, orderBy('updatedAt', 'desc'));
+    
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note));
+      setNotes(list);
+      setLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, `users/${user.uid}/notes`);
+    });
+
+    return () => unsub();
+  }, [user, isDemo]);
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newContent.trim()) return;
+
+    const noteData = {
+      title: newTitle,
+      content: newContent,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      color: ['bg-blue-50', 'bg-emerald-50', 'bg-purple-50', 'bg-orange-50', 'bg-pink-50'][Math.floor(Math.random() * 5)]
+    };
+
+    if (isDemo) {
+      const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      const updated = [{ id: Date.now().toString(), ...noteData }, ...localNotes];
+      localStorage.setItem('komorebi_notes', JSON.stringify(updated));
+      setNotes(updated as any);
+    } else if (user) {
+      await addDoc(collection(db, 'users', user.uid, 'notes'), noteData);
+    }
+
+    setNewTitle('');
+    setNewContent('');
+    setIsAdding(false);
+  };
+
+  const deleteNote = async (id: string) => {
+    if (isDemo) {
+      const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      const updated = localNotes.filter((n: any) => n.id !== id);
+      localStorage.setItem('komorebi_notes', JSON.stringify(updated));
+      setNotes(updated);
+    } else if (user) {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'users', user.uid, 'notes', id));
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Notebook</h2>
+          <p className="text-stone-500 font-serif italic">Your personal space for Japanese study notes.</p>
+        </div>
+        <button 
+          onClick={() => setIsAdding(true)}
+          className="p-4 bg-stone-900 text-white rounded-2xl shadow-xl hover:bg-stone-800 transition-all"
+        >
+          <PlusCircle className="w-6 h-6" />
+        </button>
+      </div>
+
+      {isAdding && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-xl space-y-4"
+        >
+          <input 
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="Note Title..."
+            className="w-full p-4 bg-stone-50 border-none rounded-2xl font-bold text-xl outline-none focus:ring-2 focus:ring-stone-100"
+          />
+          <textarea 
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Write your notes here..."
+            rows={5}
+            className="w-full p-4 bg-stone-50 border-none rounded-2xl font-serif italic outline-none focus:ring-2 focus:ring-stone-100"
+          />
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setIsAdding(false)}
+              className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleAddNote}
+              className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold shadow-lg"
+            >
+              Save Note
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <RotateCcw className="w-8 h-8 text-stone-200 animate-spin" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {notes.length === 0 ? (
+            <div className="col-span-full text-center py-20 bg-white rounded-[3rem] border border-stone-50">
+              <p className="text-stone-400 font-editorial italic">Your notebook is empty. Start writing!</p>
+            </div>
+          ) : (
+            notes.map((note) => (
+              <motion.div 
+                key={note.id}
+                layout
+                className={cn("p-8 rounded-[2.5rem] border border-stone-50 shadow-sm hover:shadow-md transition-all relative group", note.color || 'bg-white')}
+              >
+                <button 
+                  onClick={() => note.id && deleteNote(note.id)}
+                  className="absolute top-6 right-6 p-2 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <h3 className="text-xl font-bold text-stone-900 mb-3">{note.title}</h3>
+                <p className="text-stone-600 font-serif italic text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                <div className="mt-6 text-[8px] font-bold uppercase tracking-widest text-stone-400">
+                  {format(note.updatedAt.toDate(), 'MMM d, yyyy')}
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+const Games = ({ vocab, onSelectGame }: { vocab: Vocabulary[]; onSelectGame: (id: string) => void }) => {
   const [currentGame, setCurrentGame] = useState<string | null>(null);
 
   if (currentGame === 'typing') return <TypingGame vocab={vocab} onBack={() => setCurrentGame(null)} />;
@@ -2102,6 +2512,7 @@ const Games = ({ vocab }: { vocab: Vocabulary[] }) => {
   if (currentGame === 'particle') return <ParticleMaster onBack={() => setCurrentGame(null)} />;
   if (currentGame === 'sentence') return <SentenceBuilder vocab={vocab} onBack={() => setCurrentGame(null)} />;
   if (currentGame === 'invaders') return <KanaInvaders onBack={() => setCurrentGame(null)} />;
+  if (currentGame === 'wordsearch') return <WordSearch onBack={() => setCurrentGame(null)} />;
 
   const games = [
     { id: 'typing', title: 'Typing Game', description: 'Type the falling characters before they hit the ground.', icon: Gamepad2, color: 'bg-blue-500' },
@@ -2114,6 +2525,7 @@ const Games = ({ vocab }: { vocab: Vocabulary[] }) => {
     { id: 'particle', title: 'Particle Master', description: 'Choose the correct particle for the sentence.', icon: List, color: 'bg-cyan-500' },
     { id: 'sentence', title: 'Sentence Builder', description: 'Arrange the words to form the correct sentence.', icon: Pencil, color: 'bg-indigo-500' },
     { id: 'invaders', title: 'Kana Invaders', description: 'Type the romaji for the falling kana before they reach the bottom.', icon: Gamepad2, color: 'bg-stone-900' },
+    { id: 'wordsearch', title: 'Word Search', description: 'Find the Japanese words hidden in the grid.', icon: Search, color: 'bg-emerald-600' },
   ];
 
   return (
@@ -2875,6 +3287,188 @@ const SentenceBuilder = ({ vocab, onBack }: { vocab: Vocabulary[]; onBack: () =>
   );
 };
 
+const WordSearch = ({ onBack }: { onBack: () => void }) => {
+  const [grid, setGrid] = useState<string[][]>([]);
+  const [words, setWords] = useState<{ word: string; found: boolean }[]>([]);
+  const [selection, setSelection] = useState<{ r: number; c: number }[]>([]);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [score, setScore] = useState(0);
+  const [gameActive, setGameActive] = useState(false);
+  const gridSize = 10;
+
+  const generateGrid = () => {
+    const newGrid = Array(gridSize).fill(null).map(() => Array(gridSize).fill(''));
+    const targetWords = [
+      { jp: 'ねこ', en: 'Cat' },
+      { jp: 'いぬ', en: 'Dog' },
+      { jp: 'さかな', en: 'Fish' },
+      { jp: 'とり', en: 'Bird' },
+      { jp: 'はな', en: 'Flower' },
+      { jp: 'みず', en: 'Water' },
+      { jp: 'やま', en: 'Mountain' },
+      { jp: 'そら', en: 'Sky' },
+    ].sort(() => Math.random() - 0.5).slice(0, 5);
+
+    setWords(targetWords.map(w => ({ word: w.jp, found: false })));
+
+    targetWords.forEach(({ jp }) => {
+      let placed = false;
+      while (!placed) {
+        const direction = Math.random() > 0.5 ? 'H' : 'V';
+        const r = Math.floor(Math.random() * gridSize);
+        const c = Math.floor(Math.random() * gridSize);
+
+        if (direction === 'H' && c + jp.length <= gridSize) {
+          let canPlace = true;
+          for (let i = 0; i < jp.length; i++) {
+            if (newGrid[r][c + i] !== '' && newGrid[r][c + i] !== jp[i]) canPlace = false;
+          }
+          if (canPlace) {
+            for (let i = 0; i < jp.length; i++) newGrid[r][c + i] = jp[i];
+            placed = true;
+          }
+        } else if (direction === 'V' && r + jp.length <= gridSize) {
+          let canPlace = true;
+          for (let i = 0; i < jp.length; i++) {
+            if (newGrid[r + i][c] !== '' && newGrid[r + i][c] !== jp[i]) canPlace = false;
+          }
+          if (canPlace) {
+            for (let i = 0; i < jp.length; i++) newGrid[r + i][c] = jp[i];
+            placed = true;
+          }
+        }
+      }
+    });
+
+    const kana = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん';
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        if (newGrid[r][c] === '') newGrid[r][c] = kana[Math.floor(Math.random() * kana.length)];
+      }
+    }
+    setGrid(newGrid);
+    setGameActive(true);
+    setScore(0);
+    setSelection([]);
+  };
+
+  const handleCellClick = (r: number, c: number) => {
+    if (!gameActive) return;
+    
+    const isAlreadySelected = selection.some(s => s.r === r && s.c === c);
+    if (isAlreadySelected) {
+      setSelection(selection.filter(s => !(s.r === r && s.c === c)));
+    } else {
+      setSelection([...selection, { r, c }]);
+    }
+  };
+
+  useEffect(() => {
+    if (selection.length > 1) {
+      const selectedWord = selection.map(s => grid[s.r][s.c]).join('');
+      const wordIndex = words.findIndex(w => w.word === selectedWord && !w.found);
+      
+      if (wordIndex !== -1) {
+        const newWords = [...words];
+        newWords[wordIndex].found = true;
+        setWords(newWords);
+        setScore(s => s + 100);
+        setSelection([]);
+        
+        if (newWords.every(w => w.found)) {
+          setGameActive(false);
+        }
+      }
+    }
+  }, [selection, words, grid]);
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-8">
+        <button onClick={onBack} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+          <ArrowLeft className="w-6 h-6" />
+        </button>
+        <div className="text-center">
+          <h2 className="text-3xl font-editorial italic">Word Search</h2>
+          <p className="text-stone-500 font-mono text-xs uppercase tracking-widest">Score: {score}</p>
+        </div>
+        <div className="w-10" />
+      </div>
+
+      {!gameActive && score === 0 ? (
+        <div className="text-center py-20 bg-white rounded-[3rem] border border-stone-100 shadow-xl">
+          <Search className="w-16 h-16 mx-auto mb-6 text-stone-300" />
+          <h3 className="text-2xl font-serif italic mb-4">Find the Hidden Words</h3>
+          <button 
+            onClick={generateGrid}
+            className="px-8 py-3 bg-stone-900 text-white rounded-full hover:bg-stone-800 transition-all"
+          >
+            Start Game
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="md:col-span-2 bg-white p-4 rounded-[2rem] border border-stone-100 shadow-xl">
+            <div className="grid grid-cols-10 gap-1 aspect-square">
+              {grid.map((row, r) => row.map((char, c) => (
+                <button
+                  key={`${r}-${c}`}
+                  onClick={() => handleCellClick(r, c)}
+                  className={cn(
+                    "aspect-square flex items-center justify-center text-lg font-serif rounded-lg transition-all",
+                    selection.some(s => s.r === r && s.c === c)
+                      ? "bg-stone-900 text-white scale-95"
+                      : "bg-stone-50 text-stone-600 hover:bg-stone-100"
+                  )}
+                >
+                  {char}
+                </button>
+              )))}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-xl">
+              <h4 className="text-xs font-mono uppercase tracking-widest text-stone-400 mb-4">Words to Find</h4>
+              <div className="space-y-3">
+                {words.map((w, i) => (
+                  <div 
+                    key={i}
+                    className={cn(
+                      "flex items-center justify-between p-3 rounded-xl transition-all",
+                      w.found ? "bg-emerald-50 text-emerald-600 line-through opacity-50" : "bg-stone-50 text-stone-900"
+                    )}
+                  >
+                    <span className="text-lg font-serif">{w.word}</span>
+                    {w.found && <Check className="w-4 h-4" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {!gameActive && score > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-emerald-600 text-white p-6 rounded-[2rem] text-center"
+              >
+                <h3 className="text-xl font-serif italic mb-2">Well Done!</h3>
+                <p className="text-sm opacity-90 mb-4">You found all the words.</p>
+                <button 
+                  onClick={generateGrid}
+                  className="w-full py-3 bg-white text-emerald-600 rounded-xl font-medium hover:bg-stone-50 transition-all"
+                >
+                  Play Again
+                </button>
+              </motion.div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const KanaInvaders = ({ onBack }: { onBack: () => void }) => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(60);
@@ -3364,49 +3958,37 @@ const Phrasebook = () => {
 
 // --- Main App ---
 
-// Helper to get the best available API Key
-const getApiKey = () => {
-  const keys = [
-    process.env.GOOGLE_API_KEY,
-    process.env.GEMINI_API_KEY,
-    (import.meta as any).env?.VITE_GOOGLE_API_KEY,
-    (import.meta as any).env?.VITE_GEMINI_API_KEY
-  ];
-  // Prioritize keys that look like real Google API keys (start with AIza)
-  const validKey = keys.find(k => typeof k === 'string' && k.startsWith('AIza'));
-  if (validKey) return validKey;
-  
-  // Fallback to any non-empty string that isn't a placeholder
-  return keys.find(k => typeof k === 'string' && k.length > 10 && !k.includes('YOUR_API_KEY')) || '';
-};
-
 const MissingApiKeyWarning = () => (
-  <div className="bg-amber-50 border border-amber-100 p-8 rounded-[2.5rem] text-center space-y-4">
+  <motion.div 
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    className="bg-amber-50 border border-amber-100 p-8 rounded-[2.5rem] text-center space-y-4 shadow-xl shadow-amber-900/5"
+  >
     <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
-      <AlertCircle className="w-8 h-8 text-amber-500" />
+      <AlertCircle className="w-8 h-8 text-amber-500 animate-pulse" />
     </div>
     <h3 className="text-xl font-editorial italic text-stone-900">API Key Required</h3>
     <p className="text-stone-600 font-serif italic text-sm max-w-md mx-auto">
-      To use the Translator and Dictionary on other devices, you need to add your Gemini API Key to the application's secrets.
+      To use the AI features like Sensei Chat, Translator, and Dictionary, you need to add your Gemini API Key to the application's secrets.
     </p>
     <div className="bg-white p-6 rounded-2xl text-left text-xs space-y-3 border border-amber-50 shadow-sm">
       <p className="font-bold text-stone-900 uppercase tracking-widest">How to fix:</p>
       <ol className="list-decimal list-inside space-y-2 text-stone-500">
-        <li>Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-500 underline">Google AI Studio</a></li>
-        <li>Open <b>Settings</b> (⚙️ icon) in this app</li>
+        <li>Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-500 underline font-bold">Google AI Studio</a></li>
+        <li>Open <b>Settings</b> (⚙️ gear icon, top-right) in this app</li>
         <li>Go to <b>Secrets</b> section</li>
         <li>Add <code>GEMINI_API_KEY</code> with your key as the value</li>
-        <li>Refresh the page on your other device</li>
+        <li>The app will rebuild automatically</li>
       </ol>
     </div>
-  </div>
+  </motion.div>
 );
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game' | 'chatbot' | 'notebook' | 'invaders' | 'wordsearch'>('dashboard');
 
   useEffect(() => {
     (window as any).setActiveTab = setActiveTab;
@@ -3414,6 +3996,7 @@ export default function App() {
   const [vocab, setVocab] = useState<Vocabulary[]>([]);
   const [todayVocabCount, setTodayVocabCount] = useState(0);
   const [isDemo, setIsDemo] = useState(localStorage.getItem('komorebi_demo') === 'true');
+  const [streakWarning, setStreakWarning] = useState(false);
 
   const setDemoMode = (val: boolean) => {
     setIsDemo(val);
@@ -3599,6 +4182,27 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [loading]);
 
+  // Streak warning notification
+  useEffect(() => {
+    if (!profile || !profile.notificationsEnabled || profile.dailyGoalMet) return;
+    
+    const checkStreak = () => {
+      const now = new Date();
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const hoursLeft = (endOfDay.getTime() - now.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursLeft <= 4 && hoursLeft > 0) {
+        setStreakWarning(true);
+      } else {
+        setStreakWarning(false);
+      }
+    };
+
+    checkStreak();
+    const interval = setInterval(checkStreak, 1000 * 60 * 15); // Check every 15 mins
+    return () => clearInterval(interval);
+  }, [profile]);
+
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
     // Force account selection to avoid auto-login issues in some browsers
@@ -3651,7 +4255,7 @@ export default function App() {
           {!user && !isDemo ? (
             <Login />
           ) : (
-            <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} />
+            <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} streakWarning={streakWarning} />
           )}
         </ErrorBoundary>
       </TTSProvider>
@@ -3699,7 +4303,7 @@ const NamePrompt = ({ onSave }: { onSave: (name: string) => void }) => {
   );
 };
 
-const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }: any) => {
+const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, streakWarning }: any) => {
   const { profile, user, isDemo } = useContext(AuthContext);
   const { quotaExhausted } = useTTSContext();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -3741,6 +4345,34 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
         )}
       </AnimatePresence>
 
+      {/* Streak Warning */}
+      <AnimatePresence>
+        {streakWarning && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4"
+          >
+            <div className="bg-red-600 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-4 border border-red-500/20 backdrop-blur-md">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+                <Flame className="w-6 h-6 text-white animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold">Streak in Danger!</p>
+                <p className="text-[10px] opacity-90">Only a few hours left to hit your daily goal.</p>
+              </div>
+              <button 
+                onClick={() => setActiveTab('vocab')}
+                className="px-4 py-2 bg-white text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-50 transition-all"
+              >
+                Study Now
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-56 bg-white border-r border-stone-100 flex-col fixed inset-y-0 left-0 z-50">
             <div className="p-6 flex items-center gap-2">
@@ -3766,8 +4398,15 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                       : "text-stone-400 hover:bg-stone-50 hover:text-stone-900"
                   )}
                 >
-                  <item.icon className={cn("w-4 h-4", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
+                  <item.icon className={cn("w-4 h-4 transition-transform group-hover:scale-110", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
                   <span className="font-medium text-xs tracking-wide">{item.label}</span>
+                  {activeTab === item.id && (
+                    <motion.div 
+                      layoutId="activeTabDesktop"
+                      className="absolute inset-0 bg-stone-900 rounded-xl -z-10"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
                 </button>
               ))}
 
@@ -3779,6 +4418,8 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                 { id: 'dictionary', icon: BookOpen, label: 'Dictionary' },
                 { id: 'translator', icon: Languages, label: 'Translate' },
                 { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
+                { id: 'chatbot', icon: MessageSquare, label: 'Sensei Chat' },
+                { id: 'notebook', icon: BookOpen, label: 'Notebook' },
                 { id: 'settings', icon: Settings2, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -3791,8 +4432,15 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                       : "text-stone-400 hover:bg-stone-50 hover:text-stone-900"
                   )}
                 >
-                  <item.icon className={cn("w-4 h-4", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
+                  <item.icon className={cn("w-4 h-4 transition-transform group-hover:scale-110", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
                   <span className="font-medium text-xs tracking-wide">{item.label}</span>
+                  {activeTab === item.id && (
+                    <motion.div 
+                      layoutId="activeTabDesktop"
+                      className="absolute inset-0 bg-stone-900 rounded-xl -z-10"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
                 </button>
               ))}
             </nav>
@@ -3879,10 +4527,14 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                   { id: 'dictionary', icon: BookOpen, label: 'Dict' },
                   { id: 'translator', icon: Languages, label: 'Translate' },
                   { id: 'phrasebook', icon: MessageSquare, label: 'Phrases' },
+                  { id: 'chatbot', icon: MessageSquare, label: 'Chat' },
+                  { id: 'notebook', icon: BookOpen, label: 'Notes' },
                   { id: 'settings', icon: Settings2, label: 'Settings' },
                 ].map((item) => (
-                  <button
+                  <motion.button
                     key={item.id}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       setActiveTab(item.id as any);
                       setShowMoreMenu(false);
@@ -3894,7 +4546,7 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                   >
                     <item.icon className="w-5 h-5" />
                     <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
 
@@ -3946,7 +4598,11 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout }:
                   {activeTab === 'translator' && <Translator />}
                   {activeTab === 'phrasebook' && <Phrasebook />}
                   {activeTab === 'kana' && <WritingPractice />}
-                  {activeTab === 'game' && <Games vocab={vocab} />}
+                  {activeTab === 'game' && <Games vocab={vocab} onSelectGame={(id) => setActiveTab(id as any)} />}
+                  {activeTab === 'invaders' && <KanaInvaders onBack={() => setActiveTab('game')} />}
+                  {activeTab === 'wordsearch' && <WordSearch onBack={() => setActiveTab('game')} />}
+                  {activeTab === 'chatbot' && <Chatbot />}
+                  {activeTab === 'notebook' && <Notebook />}
                   {activeTab === 'settings' && <Settings vocab={vocab} />}
                 </motion.div>
               </AnimatePresence>
