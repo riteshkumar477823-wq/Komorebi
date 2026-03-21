@@ -12,6 +12,18 @@
 //   - lastActiveDate: timestamp
 //   - dailyGoalMet: boolean
 //   - xp: number
+//   - rank: string
+//   - title: string
+//   - dailyGoal: number
+//   - avatar: string
+//   - ownedAvatars: list
+//   - preferredTTS: string
+//   - notificationsEnabled: boolean
+//   - achievements: list
+//   - pinnedAchievements: list
+//   - apiKeys: list
+//   - quoteCache: list
+//   - quoteStats: map
 //
 // Collection: users/{userId}/vocabularies
 // Document ID: {vocabId}
@@ -22,6 +34,18 @@
 //   - romaji: string (max 100)
 //   - createdAt: timestamp (required)
 //   - mastery: number (0-5)
+//   - parentId: string
+//   - type: string
+//   - deleted: boolean
+//
+// Collection: users/{userId}/notes
+// Document ID: {noteId}
+// Fields:
+//   - title: string (required)
+//   - content: string (required)
+//   - createdAt: timestamp (required)
+//   - updatedAt: timestamp (required)
+//   - color: string
 //
 // ===============================================================
 
@@ -47,23 +71,59 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
+      let allowedFields = [
+        'uid', 'displayName', 'email', 'streakCount', 'lastActiveDate', 
+        'dailyGoalMet', 'xp', 'rank', 'title', 'dailyGoal', 'avatar', 
+        'ownedAvatars', 'preferredTTS', 'notificationsEnabled', 'achievements', 
+        'pinnedAchievements', 'apiKeys', 'quoteCache', 'quoteStats'
+      ];
       return data.keys().hasAll(['uid', 'email']) &&
+             data.keys().hasOnly(allowedFields) &&
              data.uid is string &&
              data.email is string &&
              (!('displayName' in data) || (data.displayName is string || data.displayName == null)) &&
              (!('streakCount' in data) || data.streakCount is number) &&
              (!('xp' in data) || data.xp is number) &&
              (!('lastActiveDate' in data) || data.lastActiveDate is timestamp) &&
-             (!('dailyGoalMet' in data) || data.dailyGoalMet is bool);
+             (!('dailyGoalMet' in data) || data.dailyGoalMet is bool) &&
+             (!('rank' in data) || data.rank is string) &&
+             (!('title' in data) || data.title is string) &&
+             (!('dailyGoal' in data) || data.dailyGoal is number) &&
+             (!('avatar' in data) || data.avatar is string) &&
+             (!('ownedAvatars' in data) || data.ownedAvatars is list) &&
+             (!('preferredTTS' in data) || data.preferredTTS in ['native', 'gemini']) &&
+             (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
+             (!('achievements' in data) || data.achievements is list) &&
+             (!('pinnedAchievements' in data) || data.pinnedAchievements is list) &&
+             (!('apiKeys' in data) || data.apiKeys is list) &&
+             (!('quoteCache' in data) || data.quoteCache is list) &&
+             (!('quoteStats' in data) || data.quoteStats is map);
     }
 
     function isValidVocab(data) {
+      let allowedFields = ['uid', 'japanese', 'meaning', 'romaji', 'createdAt', 'mastery', 'parentId', 'type', 'deleted'];
       return data.keys().hasAll(['uid', 'japanese', 'meaning', 'createdAt']) &&
+             data.keys().hasOnly(allowedFields) &&
              data.uid == request.auth.uid &&
              data.japanese is string && data.japanese.size() <= 100 &&
              data.meaning is string && data.meaning.size() <= 500 &&
              (!('romaji' in data) || (data.romaji is string && data.romaji.size() <= 100)) &&
+             (!('mastery' in data) || data.mastery is number) &&
+             (!('parentId' in data) || data.parentId is string) &&
+             (!('type' in data) || data.type in ['main', 'sub']) &&
+             (!('deleted' in data) || data.deleted is bool) &&
              data.createdAt is timestamp;
+    }
+
+    function isValidNote(data) {
+      let allowedFields = ['title', 'content', 'createdAt', 'updatedAt', 'color'];
+      return data.keys().hasAll(['title', 'content', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 5000 &&
+             (!('color' in data) || data.color is string) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
     }
 
     // ===============================================================
@@ -79,6 +139,13 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidVocab(request.resource.data);
         allow update: if isOwner(userId) && isValidVocab(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /notes/{noteId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNote(request.resource.data);
+        allow update: if isOwner(userId) && isValidNote(request.resource.data);
         allow delete: if isOwner(userId);
       }
     }

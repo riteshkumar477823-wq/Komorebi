@@ -9,14 +9,17 @@ export interface UserProfile {
   dailyGoalMet: boolean;
   xp: number;
   rank: string; // E5, E4, ..., SSS1
-  credits: number;
   title?: string; // e.g., "Novice Learner", "Kanji Slayer"
-  roomName?: string;
-  roomItems?: string[]; // IDs of purchased items
   dailyGoal?: number;
   avatar?: string;
+  ownedAvatars?: string[];
   preferredTTS?: 'native' | 'gemini';
   notificationsEnabled?: boolean;
+  achievements?: string[]; // IDs of unlocked achievements
+  pinnedAchievements?: string[]; // IDs of pinned achievements (max 10)
+  apiKeys?: string[]; // Multiple Gemini API keys
+  quoteCache?: { text: string; translation: string }[];
+  quoteStats?: { lastDate: string; count: number };
 }
 
 export interface Note {

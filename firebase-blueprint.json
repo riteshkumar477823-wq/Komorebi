@@ -11,7 +11,34 @@
         "streakCount": { "type": "integer" },
         "lastActiveDate": { "type": "string", "format": "date-time" },
         "dailyGoalMet": { "type": "boolean" },
-        "xp": { "type": "integer" }
+        "xp": { "type": "integer" },
+        "rank": { "type": "string" },
+        "title": { "type": "string" },
+        "dailyGoal": { "type": "integer" },
+        "avatar": { "type": "string" },
+        "ownedAvatars": { "type": "array", "items": { "type": "string" } },
+        "preferredTTS": { "type": "string", "enum": ["native", "gemini"] },
+        "notificationsEnabled": { "type": "boolean" },
+        "achievements": { "type": "array", "items": { "type": "string" } },
+        "pinnedAchievements": { "type": "array", "items": { "type": "string" } },
+        "apiKeys": { "type": "array", "items": { "type": "string" } },
+        "quoteCache": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "translation": { "type": "string" }
+            }
+          } 
+        },
+        "quoteStats": {
+          "type": "object",
+          "properties": {
+            "lastDate": { "type": "string" },
+            "count": { "type": "integer" }
+          }
+        }
       },
       "required": ["uid", "email"]
     },
@@ -25,9 +52,24 @@
         "meaning": { "type": "string" },
         "romaji": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "mastery": { "type": "integer" }
+        "mastery": { "type": "integer" },
+        "parentId": { "type": "string" },
+        "type": { "type": "string", "enum": ["main", "sub"] }
       },
       "required": ["uid", "japanese", "meaning"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "User's personal notes",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "color": { "type": "string" }
+      },
+      "required": ["title", "content", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -38,6 +80,10 @@
     "/users/{userId}/vocabularies/{vocabId}": {
       "schema": "Vocabulary",
       "description": "User's personal vocabulary list"
+    },
+    "/users/{userId}/notes/{noteId}": {
+      "schema": "Note",
+      "description": "User's personal notes"
     }
   }
 }
