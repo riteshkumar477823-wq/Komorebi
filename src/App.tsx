@@ -7,8 +7,11 @@ import {
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  deleteUser
 } from 'firebase/auth';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { 
   doc, 
   getDoc, 
@@ -21,7 +24,9 @@ import {
   orderBy, 
   addDoc,
   Timestamp,
-  getDocFromServer
+  getDocFromServer,
+  getDocs,
+  deleteDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile, Vocabulary, OperationType, FirestoreErrorInfo, Note } from './types';
@@ -44,6 +49,9 @@ import {
   Trash2,
   Eraser,
   RotateCcw,
+  Download,
+  Sparkles,
+  Loader2,
   Settings as SettingsIcon,
   Settings2,
   ChevronLeft,
@@ -57,7 +65,6 @@ import {
   Ear,
   RefreshCw,
   Zap,
-  Sparkles,
   ArrowLeft,
   Check,
   ShoppingBag,
@@ -69,9 +76,10 @@ import {
   BarChart2,
   User as UserIcon,
   Pin,
-  Loader2,
   Send,
-  Award
+  Award,
+  ArrowRight,
+  LogIn
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
@@ -243,6 +251,8 @@ const AuthContext = createContext<{
   logout: () => Promise<void>;
   setDemoMode: (val: boolean) => void;
   isDemo: boolean;
+  vocab: Vocabulary[];
+  setActiveTab: (tab: any) => void;
 }>({
   user: null,
   profile: null,
@@ -252,6 +262,8 @@ const AuthContext = createContext<{
   logout: async () => {},
   setDemoMode: () => {},
   isDemo: false,
+  vocab: [],
+  setActiveTab: () => {},
 });
 
 // --- Hooks ---
@@ -694,12 +706,14 @@ const Achievements = () => {
   );
 };
         
-const Stats = () => {
-  const { profile, vocab } = useContext(AuthContext) as any;
+const Stats = ({ todayVocabCount }: { todayVocabCount: number }) => {
+  const { profile, vocab } = useContext(AuthContext);
   const streak = profile?.streakCount || 0;
   const xp = profile?.xp || 0;
   const rank = profile?.rank || 'E5';
   const totalWords = vocab?.length || 0;
+  const dailyGoal = profile?.dailyGoal || 5;
+  const progress = Math.min((todayVocabCount / dailyGoal) * 100, 100);
 
   return (
     <div className="space-y-8 pb-20">
@@ -768,17 +782,21 @@ const Stats = () => {
       >
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold">Daily Goal</h3>
-          <span className="text-xs font-mono opacity-60 uppercase tracking-widest">5 words / day</span>
+          <span className="text-xs font-mono opacity-60 uppercase tracking-widest">{profile?.dailyGoal || 5} words / day</span>
         </div>
         <div className="space-y-4">
           <div className="h-4 bg-white/10 rounded-full overflow-hidden">
             <motion.div 
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min((totalWords % 5) * 20, 100)}%` }}
+              animate={{ width: `${progress}%` }}
               className="h-full bg-[#f2a93b]"
             />
           </div>
-          <p className="text-sm text-white/60 italic font-serif">You're doing great! Keep pushing towards your goal.</p>
+          <p className="text-sm text-white/60 italic font-serif">
+            {todayVocabCount >= dailyGoal 
+              ? "Goal met! You're amazing! ✨" 
+              : `You've learned ${todayVocabCount} words today. ${dailyGoal - todayVocabCount} more to go!`}
+          </p>
         </div>
       </motion.div>
     </div>
@@ -786,7 +804,7 @@ const Stats = () => {
 };
 
 const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: Vocabulary[], logout: () => void }) => {
-  const { profile, user, isDemo } = useContext(AuthContext);
+  const { profile, user, isDemo, setProfile } = useContext(AuthContext);
   const [quote, setQuote] = useState<{ text: string; translation: string } | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
   const streak = profile?.streakCount || 0;
@@ -832,12 +850,24 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
         if (data.text && data.translation) {
           setQuote(data);
           
-          // Update cache and stats in Firestore
+          // Update cache and stats
           const newCache = [...cache, data].slice(-50); // Keep last 50
-          await updateDoc(doc(db, 'users', profile.uid), {
+          const updates = {
             quoteCache: newCache,
             quoteStats: { lastDate: today, count: currentCount + 1 }
-          });
+          };
+
+          if (!isDemo && profile) {
+            await updateDoc(doc(db, 'users', profile.uid), updates);
+          } else if (profile) {
+            // Handle demo mode persistence
+            const updatedProfile = {
+              ...profile,
+              ...updates
+            };
+            setProfile(updatedProfile);
+            localStorage.setItem('komorebi_profile', JSON.stringify(updatedProfile));
+          }
         } else {
           throw new Error("Invalid quote data");
         }
@@ -1026,7 +1056,7 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
               onClick={() => (window as any).setActiveTab('quiz')}
               className="w-full py-2 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm hover:bg-stone-800 transition-all"
             >
-              Test
+              Practice
             </button>
           </div>
         </motion.div>
@@ -1057,7 +1087,7 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
           }}
           whileHover={{ y: -5 }}
           onClick={() => (window as any).setActiveTab('game')}
-          className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm flex flex-col relative overflow-hidden cursor-pointer group"
+          className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm flex flex-col items-center justify-center relative overflow-hidden cursor-pointer group text-center"
         >
           <h3 className="text-lg font-bold text-stone-900 relative z-10">Games</h3>
           <div className="mt-4 relative z-10">
@@ -1189,12 +1219,21 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
           <h2 className="text-2xl font-editorial italic text-stone-900 mb-1">Vocabulary Library</h2>
           <p className="text-stone-500 font-serif italic text-xs">Your personal collection of words and phrases.</p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-white text-stone-900 rounded-full border border-stone-100 shadow-sm self-start">
-          <BookOpen className="w-4 h-4 text-stone-400" />
-          <div className="flex flex-col leading-none">
-            <span className="font-bold text-base">{vocab.length}</span>
-            <span className="text-[7px] font-bold uppercase tracking-widest text-stone-400">Total Words</span>
+        <div className="flex items-center gap-3 self-start">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white text-stone-900 rounded-full border border-stone-100 shadow-sm">
+            <BookOpen className="w-4 h-4 text-stone-400" />
+            <div className="flex flex-col leading-none">
+              <span className="font-bold text-base">{vocab.length}</span>
+              <span className="text-[7px] font-bold uppercase tracking-widest text-stone-400">Total Words</span>
+            </div>
           </div>
+          <button 
+            onClick={() => exportToPDF(vocab, "My Vocabulary Library")}
+            className="px-4 py-2 bg-stone-900 text-white rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-800 transition-all flex items-center gap-2 shadow-lg shadow-stone-100"
+          >
+            <Download className="w-3 h-3" />
+            Export PDF
+          </button>
         </div>
       </div>
 
@@ -1386,6 +1425,12 @@ const Translator = () => {
     }
   };
 
+  const handlePlay = (val: string) => {
+    // Only speak the Japanese part if it contains parentheses (Romaji)
+    const japanesePart = val.split('(')[0].trim();
+    play(japanesePart);
+  };
+
   return (
     <div className="max-w-3xl mx-auto">
       <motion.div 
@@ -1453,7 +1498,7 @@ const Translator = () => {
             >
               <div className="absolute top-8 right-8">
                 <button 
-                  onClick={() => play(result)}
+                  onClick={() => handlePlay(result)}
                   disabled={ttsLoading}
                   className="p-3 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all"
                 >
@@ -1627,9 +1672,173 @@ const WritingPractice = () => {
   const [practiceMode, setPracticeMode] = useState(false);
   const [autoClear, setAutoClear] = useState(true);
   const [drawings, setDrawings] = useState<Record<string, string>>({});
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  
+  // Test Mode States
+  const [testMode, setTestMode] = useState(false);
+  const [testSelection, setTestSelection] = useState<string[]>([]);
+  const [isTesting, setIsTesting] = useState(false);
+  const [currentTestIndex, setCurrentTestIndex] = useState(0);
+  const [testOrder, setTestOrder] = useState<number[]>([]);
+  
   const { play, loading: ttsLoading } = useTTSContext();
 
   const data = type === 'hiragana' ? hiragana : katakana;
+
+  const clearAllDrawings = () => {
+    setDrawings({});
+    setShowClearConfirm(false);
+  };
+
+  const startTest = () => {
+    if (testSelection.length === 0) return;
+    const order = Array.from({ length: testSelection.length }, (_, i) => i)
+      .sort(() => Math.random() - 0.5);
+    setTestOrder(order);
+    setCurrentTestIndex(0);
+    setIsTesting(true);
+  };
+
+  const nextTest = () => {
+    if (currentTestIndex < testOrder.length - 1) {
+      setCurrentTestIndex(prev => prev + 1);
+    } else {
+      setIsTesting(false);
+      setTestMode(false);
+    }
+  };
+
+  if (testMode && !isTesting) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900 mb-0.5">Writing Test</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Select the characters you want to be tested on.</p>
+          </div>
+          <button 
+            onClick={() => setTestMode(false)}
+            className="text-xs font-bold text-stone-400 hover:text-stone-900 uppercase tracking-widest"
+          >
+            Back to Practice
+          </button>
+        </div>
+
+        <div className="bg-white p-8 rounded-[3rem] border border-stone-100 shadow-sm space-y-8">
+          <div className="flex gap-4 border-b border-stone-50 pb-4">
+            <button 
+              onClick={() => setType('hiragana')}
+              className={cn("text-xs font-bold uppercase tracking-widest transition-all", type === 'hiragana' ? "text-stone-900" : "text-stone-300")}
+            >
+              Hiragana
+            </button>
+            <button 
+              onClick={() => setType('katakana')}
+              className={cn("text-xs font-bold uppercase tracking-widest transition-all", type === 'katakana' ? "text-stone-900" : "text-stone-300")}
+            >
+              Katakana
+            </button>
+          </div>
+
+          <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
+            {data.map(k => (
+              <button
+                key={k.kana}
+                onClick={() => {
+                  if (testSelection.includes(k.kana)) {
+                    setTestSelection(prev => prev.filter(s => s !== k.kana));
+                  } else {
+                    setTestSelection(prev => [...prev, k.kana]);
+                  }
+                }}
+                className={cn(
+                  "aspect-square flex items-center justify-center rounded-xl border-2 transition-all",
+                  testSelection.includes(k.kana)
+                    ? "border-stone-900 bg-stone-900 text-white shadow-md"
+                    : "border-stone-50 bg-stone-50 text-stone-400 hover:border-stone-200"
+                )}
+              >
+                <span className="text-xl font-serif">{k.kana}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-6 pt-4 border-t border-stone-50">
+            <div className="text-xs font-serif italic text-stone-500">
+              {testSelection.length} characters selected
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button 
+                onClick={() => setTestSelection(data.map(k => k.kana))}
+                className="px-4 py-2 text-stone-400 hover:text-stone-900 font-bold text-[10px] uppercase tracking-widest transition-all"
+              >
+                Select All
+              </button>
+              <button 
+                onClick={() => setTestSelection([])}
+                className="px-4 py-2 text-stone-400 hover:text-stone-900 font-bold text-[10px] uppercase tracking-widest transition-all"
+              >
+                Clear Selection
+              </button>
+              <button 
+                onClick={startTest}
+                disabled={testSelection.length === 0}
+                className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold text-xs hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 disabled:opacity-50"
+              >
+                Start Test
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTesting) {
+    const currentKana = testSelection[testOrder[currentTestIndex]];
+    const currentData = [...hiragana, ...katakana].find(k => k.kana === currentKana);
+
+    return (
+      <div className="max-w-2xl mx-auto space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-editorial italic text-stone-900 mb-0.5">Writing Test</h2>
+            <p className="text-stone-500 font-serif italic text-xs">Character {currentTestIndex + 1} of {testOrder.length}</p>
+          </div>
+          <button 
+            onClick={() => setIsTesting(false)}
+            className="text-xs font-bold text-red-500 hover:text-red-700 uppercase tracking-widest"
+          >
+            End Test
+          </button>
+        </div>
+
+        <div className="bg-white p-8 rounded-[3rem] border border-stone-100 shadow-sm text-center space-y-8">
+          <div className="space-y-2">
+            <span className="text-stone-400 font-mono tracking-[0.3em] uppercase text-xs block">Write this:</span>
+            <span className="text-6xl font-mono text-stone-900 font-bold uppercase tracking-widest">{currentData?.romaji}</span>
+          </div>
+
+          <DrawingCanvas 
+            key={currentKana}
+            target={currentKana} 
+            showGhost={false} 
+            onSave={() => {}}
+          />
+
+          <div className="flex justify-center pt-4">
+            <button 
+              onClick={nextTest}
+              className="px-12 py-4 bg-stone-900 text-white rounded-full font-bold text-sm hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 flex items-center gap-3"
+            >
+              {currentTestIndex < testOrder.length - 1 ? 'Next Character' : 'Finish Test'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -1639,6 +1848,49 @@ const WritingPractice = () => {
           <p className="text-stone-500 font-serif italic text-xs">Master the building blocks of Japanese.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="relative">
+            <button 
+              onClick={() => setShowClearConfirm(!showClearConfirm)}
+              className="px-4 py-1.5 bg-stone-50 text-stone-400 hover:text-stone-900 rounded-full font-bold text-[10px] uppercase tracking-widest transition-all flex items-center gap-2"
+            >
+              <Trash2 className="w-3 h-3" />
+              Clear All
+            </button>
+            {showClearConfirm && (
+              <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-stone-100 max-w-xs w-full space-y-6 text-center"
+                >
+                  <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+                    <Trash2 className="w-8 h-8 text-red-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-editorial italic text-stone-900">Clear All Progress?</h3>
+                    <p className="text-sm text-stone-500 font-serif italic leading-relaxed">
+                      This will permanently delete all your writing practice drawings. This action cannot be undone.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setShowClearConfirm(false)}
+                      className="flex-1 py-3 bg-stone-100 text-stone-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-stone-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={clearAllDrawings}
+                      className="flex-1 py-3 bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-red-100"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </div>
+          
           <div className="flex bg-white p-0.5 rounded-full border border-stone-100 shadow-sm">
             <button 
               onClick={() => { setType('hiragana'); setSelected(hiragana[0]); }}
@@ -1669,7 +1921,14 @@ const WritingPractice = () => {
               )}
             >
               <Pencil className="w-3 h-3" />
-              Practice Mode
+              Practice
+            </button>
+            <button 
+              onClick={() => setTestMode(true)}
+              className="px-4 py-1.5 rounded-full font-bold text-xs text-stone-400 hover:text-stone-900 transition-all whitespace-nowrap flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              Test
             </button>
             <button 
               onClick={() => setAutoClear(!autoClear)}
@@ -2011,6 +2270,11 @@ const Dictionary = () => {
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCommon, setShowCommon] = useState(true);
+  const [discoveredWords, setDiscoveredWords] = useState<{ jp: string; ro: string; en: string }[]>(() => {
+    const saved = localStorage.getItem('discovered_words');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [discovering, setDiscovering] = useState(false);
   const { play, loading: ttsLoading } = useTTSContext();
 
   const commonWords = [
@@ -2023,6 +2287,44 @@ const Dictionary = () => {
     { jp: "かわいい", ro: "Kawaii", en: "Cute" },
     { jp: "さようなら", ro: "Sayounara", en: "Goodbye" },
   ];
+
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    try {
+      const ai = getAI(profile);
+      if (!ai) throw new Error("API Key not found.");
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Provide a list of 100 common and useful Japanese words for beginners. 
+        Make sure these words are DIFFERENT from common basic ones like 'Konnichiwa' or 'Arigatou' if possible.
+        For each word, provide:
+        1. Japanese (Kanji/Kana)
+        2. Romaji
+        3. Simple English meaning
+        
+        Format the response as a JSON array of objects with keys: "jp", "ro", "en". 
+        Example: [{"jp": "こんにちは", "ro": "Konnichiwa", "en": "Hello"}]
+        Provide ONLY the JSON.`,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const words = JSON.parse(response.text || "[]");
+      if (Array.isArray(words)) {
+        const updatedWords = [...discoveredWords, ...words];
+        // Remove duplicates based on Japanese text
+        const uniqueWords = Array.from(new Map(updatedWords.map(item => [item['jp'], item])).values());
+        setDiscoveredWords(uniqueWords);
+        localStorage.setItem('discovered_words', JSON.stringify(uniqueWords));
+      }
+    } catch (error) {
+      console.error("Discovery Error:", error);
+    } finally {
+      setDiscovering(false);
+    }
+  };
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -2064,16 +2366,48 @@ const Dictionary = () => {
     }
   };
 
+  const displayWords = discoveredWords.length > 0 ? discoveredWords : commonWords;
+
   return (
     <div className="max-w-3xl mx-auto">
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-8 flex justify-between items-end"
       >
-        <h2 className="text-3xl font-editorial italic text-stone-900 mb-2">Japanese Dictionary</h2>
-        <p className="text-stone-500 font-serif italic">Search for any word or browse common expressions below.</p>
-      </motion.div>
+        <div>
+          <h2 className="text-3xl font-editorial italic text-stone-900 mb-2">Japanese Dictionary</h2>
+          <p className="text-stone-500 font-serif italic">Search for any word or browse common expressions below.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {displayWords.length > 0 && (
+            <button 
+              onClick={() => exportToPDF(displayWords, "Dictionary Words")}
+              className="px-4 py-2 bg-stone-50 text-stone-600 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-100 transition-all flex items-center gap-2"
+            >
+              <Download className="w-3 h-3" />
+              Export PDF
+            </button>
+          )}
+          <button 
+            onClick={handleDiscover}
+            disabled={discovering}
+            className="px-4 py-2 bg-amber-50 text-amber-600 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-amber-100 transition-all disabled:opacity-50 flex items-center gap-2"
+          >
+          {discovering ? (
+            <>
+              <RotateCcw className="w-3 h-3 animate-spin" />
+              Discovering...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3 h-3" />
+              Discover +100 Words
+            </>
+          )}
+        </button>
+      </div>
+    </motion.div>
 
       {!getApiKey() && <div className="mb-8"><MissingApiKeyWarning /></div>}
 
@@ -2106,7 +2440,7 @@ const Dictionary = () => {
             animate={{ opacity: 1 }}
             className="grid grid-cols-1 sm:grid-cols-2 gap-4"
           >
-            {commonWords.map((word, i) => (
+            {displayWords.map((word, i) => (
               <button
                 key={i}
                 onClick={() => { setQuery(word.jp); setTimeout(() => handleSearch(), 100); }}
@@ -2251,22 +2585,34 @@ const Flashcards = ({ vocab }: { vocab: Vocabulary[] }) => {
 };
 
 const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
+  const [step, setStep] = useState<'intro' | 'quiz' | 'result'>('intro');
+  const [questionCount, setQuestionCount] = useState<number>(10);
   const [currentQuestion, setCurrentQuestion] = useState<number>(0);
   const [score, setScore] = useState(0);
-  const [showResult, setShowResult] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [quizVocab, setQuizVocab] = useState<Vocabulary[]>([]);
   const { play, loading: ttsLoading } = useTTSContext();
 
+  const startQuiz = (count: number) => {
+    const shuffled = [...vocab].sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, Math.min(count, vocab.length));
+    setQuizVocab(selected);
+    setQuestionCount(selected.length);
+    setStep('quiz');
+    setCurrentQuestion(0);
+    setScore(0);
+  };
+
   useEffect(() => {
-    if (vocab.length >= 4 && !showResult) {
+    if (quizVocab.length > 0 && step === 'quiz' && currentQuestion < quizVocab.length) {
       generateQuestion();
     }
-  }, [currentQuestion, vocab, showResult]);
+  }, [currentQuestion, quizVocab, step]);
 
   const generateQuestion = () => {
-    const current = vocab[currentQuestion % vocab.length];
+    const current = quizVocab[currentQuestion];
     const others = vocab.filter(v => v.id !== current.id);
     const shuffledOthers = [...others].sort(() => 0.5 - Math.random());
     const choices = [current.meaning, ...shuffledOthers.slice(0, 3).map(v => v.meaning)];
@@ -2277,15 +2623,15 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
 
   const handleAnswer = (option: string) => {
     if (selectedOption) return;
-    const current = vocab[currentQuestion % vocab.length];
+    const current = quizVocab[currentQuestion];
     const correct = option === current.meaning;
     setSelectedOption(option);
     setIsCorrect(correct);
     if (correct) setScore(score + 1);
 
     setTimeout(() => {
-      if (currentQuestion + 1 >= Math.min(vocab.length, 10)) {
-        setShowResult(true);
+      if (currentQuestion + 1 >= quizVocab.length) {
+        setStep('result');
       } else {
         setCurrentQuestion(currentQuestion + 1);
       }
@@ -2297,43 +2643,77 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
       <div className="text-center py-20 bg-white rounded-[3rem] border border-stone-50">
         <Brain className="w-16 h-16 text-stone-200 mx-auto mb-6" />
         <h3 className="text-2xl font-editorial italic text-stone-900 mb-2">Not enough words</h3>
-        <p className="text-stone-500 font-serif italic">You need at least 4 words in your library to start a quiz.</p>
+        <p className="text-stone-500 font-serif italic">You need at least 4 words in your library to start practice.</p>
       </div>
     );
   }
 
-  if (showResult) {
+  if (step === 'intro') {
+    return (
+      <div className="max-w-xl mx-auto text-center py-20 bg-white rounded-[3rem] border border-stone-50 shadow-sm space-y-12">
+        <div className="space-y-4">
+          <div className="w-20 h-20 bg-stone-900 rounded-3xl mx-auto flex items-center justify-center shadow-lg rotate-3">
+            <Brain className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-4xl font-editorial italic text-stone-900">Practice Session</h2>
+          <p className="text-stone-500 font-serif italic">Select how many words you want to practice today.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 px-12">
+          {[5, 10, 15, 20].map(count => (
+            <button
+              key={count}
+              onClick={() => startQuiz(count)}
+              disabled={vocab.length < count && count !== 5}
+              className={cn(
+                "py-4 rounded-2xl font-bold text-sm transition-all border-2",
+                vocab.length >= count || count === 5
+                  ? "border-stone-100 hover:border-stone-900 text-stone-900"
+                  : "border-stone-50 text-stone-200 cursor-not-allowed"
+              )}
+            >
+              {count} Words
+            </button>
+          ))}
+          <button
+            onClick={() => startQuiz(vocab.length)}
+            className="col-span-2 py-4 rounded-2xl font-bold text-sm transition-all border-2 border-stone-100 hover:border-stone-900 text-stone-900"
+          >
+            All Words ({vocab.length})
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'result') {
     return (
       <div className="max-w-xl mx-auto text-center py-20 bg-white rounded-[3rem] border border-stone-50 shadow-sm">
         <Trophy className="w-20 h-20 text-yellow-500 mx-auto mb-8 animate-bounce" />
-        <h2 className="text-5xl font-editorial italic text-stone-900 mb-4">Quiz Complete!</h2>
-        <p className="text-2xl text-stone-500 font-serif mb-12">You scored {score} out of {Math.min(vocab.length, 10)}</p>
+        <h2 className="text-5xl font-editorial italic text-stone-900 mb-4">Practice Complete!</h2>
+        <p className="text-2xl text-stone-500 font-serif mb-12">You scored {score} out of {questionCount}</p>
         <button 
-          onClick={() => {
-            setCurrentQuestion(0);
-            setScore(0);
-            setShowResult(false);
-          }}
+          onClick={() => setStep('intro')}
           className="px-12 py-5 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-100"
         >
-          Try Again
+          Practice Again
         </button>
       </div>
     );
   }
 
-  const current = vocab[currentQuestion % vocab.length];
+  const current = quizVocab[currentQuestion];
 
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-12 flex justify-between items-end">
         <div>
-          <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Quiz</h2>
-          <p className="text-stone-500 font-serif italic">Test your knowledge of your library.</p>
+          <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Practice</h2>
+          <p className="text-stone-500 font-serif italic">Testing your knowledge of your library.</p>
         </div>
         <div className="text-right">
           <span className="text-stone-400 font-mono text-xs uppercase tracking-widest block mb-1">Progress</span>
-          <span className="text-2xl font-serif text-stone-900">{currentQuestion + 1} / {Math.min(vocab.length, 10)}</span>
+          <span className="text-2xl font-serif text-stone-900">{currentQuestion + 1} / {questionCount}</span>
         </div>
       </div>
 
@@ -2380,7 +2760,7 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
 };
 
 const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
-  const { profile, user, isDemo, setProfile } = useContext(AuthContext);
+  const { profile, user, isDemo, setProfile, setDemoMode } = useContext(AuthContext);
   const { mode, setTTSMode } = useTTSContext();
   const [name, setName] = useState(profile?.displayName || '');
   const [dailyGoal, setDailyGoal] = useState(profile?.dailyGoal || 5);
@@ -2430,6 +2810,114 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
 
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testError, setTestError] = useState<string | null>(null);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setSaving(true);
+    try {
+      if (isDemo) {
+        localStorage.removeItem('komorebi_demo');
+        localStorage.removeItem('komorebi_profile');
+        localStorage.removeItem('komorebi_vocab');
+        localStorage.removeItem('komorebi_notes');
+        setDemoMode(false);
+        window.location.reload();
+      } else if (user) {
+        // 1. Delete vocabularies
+        const vocabQuery = query(collection(db, 'users', user.uid, 'vocabularies'));
+        const vocabSnap = await getDocs(vocabQuery);
+        for (const d of vocabSnap.docs) {
+          await deleteDoc(d.ref);
+        }
+        
+        // 2. Delete notes
+        const notesQuery = query(collection(db, 'users', user.uid, 'notes'));
+        const notesSnap = await getDocs(notesQuery);
+        for (const d of notesSnap.docs) {
+          await deleteDoc(d.ref);
+        }
+        
+        // 3. Delete profile
+        await deleteDoc(doc(db, 'users', user.uid));
+        
+        // 4. Delete Auth User
+        try {
+          await deleteUser(user);
+        } catch (authError: any) {
+          console.error("Auth deletion error:", authError);
+          if (authError.code === 'auth/requires-recent-login') {
+            alert("For security reasons, you need to have recently logged in to delete your account. Please log out and log back in, then try again.");
+            setSaving(false);
+            return;
+          }
+        }
+        
+        // 5. Sign out
+        await signOut(auth);
+        window.location.reload(); // Force reload to clear all states
+      }
+    } catch (error) {
+      console.error("Error deleting account:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConnectAccount = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      setDemoMode(false);
+    } catch (error) {
+      console.error("Error connecting account:", error);
+    }
+  };
+
+  const [migrating, setMigrating] = useState(false);
+  const handleManualMigration = async () => {
+    if (!user) return;
+    setMigrating(true);
+    try {
+      // Trigger the migration logic manually
+      const guestVocab = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
+      const guestNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      
+      if (guestVocab.length === 0 && guestNotes.length === 0) {
+        alert("No guest data found to migrate.");
+        return;
+      }
+
+      console.log(`Manual migration started for ${user.uid}. Vocab: ${guestVocab.length}, Notes: ${guestNotes.length}`);
+      
+      // Migrate vocab
+      for (const v of guestVocab) {
+        await addDoc(collection(db, 'users', user.uid, 'vocabularies'), {
+          ...v,
+          createdAt: Timestamp.now(),
+          migrated: true
+        });
+      }
+
+      // Migrate notes
+      for (const n of guestNotes) {
+        await addDoc(collection(db, 'users', user.uid, 'notes'), {
+          ...n,
+          createdAt: Timestamp.now(),
+          migrated: true
+        });
+      }
+
+      localStorage.removeItem('komorebi_vocab');
+      localStorage.removeItem('komorebi_notes');
+      alert("Migration successful! Your data has been moved to your Google account.");
+    } catch (error) {
+      console.error("Manual migration error:", error);
+      alert("Migration failed. Please check your connection.");
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const handleTestAI = async () => {
     setTestStatus('testing');
@@ -2696,13 +3184,29 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
           <>
             <section className="space-y-4">
               <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Account</h3>
-              <div className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Logged in as</div>
-                  <div className="text-sm font-medium text-stone-900">{user.email}</div>
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Logged in as</div>
+                    <div className="text-sm font-medium text-stone-900">{user.email}</div>
+                  </div>
+                  <div className="px-3 py-1 bg-white rounded-full border border-stone-100 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                    {user.providerData[0]?.providerId === 'google.com' ? 'Google' : 'Email'}
+                  </div>
                 </div>
-                <div className="px-3 py-1 bg-white rounded-full border border-stone-100 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                  {user.providerData[0]?.providerId === 'google.com' ? 'Google' : 'Email'}
+                
+                <div className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between border border-stone-100">
+                  <div>
+                    <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Data Migration</div>
+                    <p className="text-[10px] text-stone-500 font-serif italic">Missing your guest data? Migrate it manually.</p>
+                  </div>
+                  <button 
+                    onClick={handleManualMigration}
+                    disabled={migrating}
+                    className="px-4 py-2 bg-white text-stone-900 rounded-full font-bold text-[10px] uppercase tracking-widest border border-stone-200 hover:bg-stone-50 transition-all disabled:opacity-50"
+                  >
+                    {migrating ? "Migrating..." : "Migrate Now"}
+                  </button>
                 </div>
               </div>
             </section>
@@ -2752,6 +3256,73 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
             )}
           </div>
         </section>
+
+        <section className="space-y-4 pt-6">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-red-400">Danger Zone</h3>
+          <div className="p-6 bg-red-50 rounded-3xl border border-red-100 space-y-6">
+            {isDemo ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-bold text-red-900">Guest Mode</div>
+                  <div className="text-xs text-red-600 font-serif italic">Your data is stored locally and will be lost if you clear your browser cache.</div>
+                </div>
+                <button 
+                  onClick={handleConnectAccount}
+                  className="w-full py-3 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Connect to an Account
+                </button>
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full py-3 bg-white text-red-600 border border-red-200 rounded-2xl font-bold hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Account
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-bold text-red-900">Delete Account</div>
+                  <div className="text-xs text-red-600 font-serif italic">This will permanently delete your profile, vocabulary, and notes. This action cannot be undone.</div>
+                </div>
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full py-3 bg-white text-red-600 border border-red-200 rounded-2xl font-bold hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Account
+                </button>
+              </div>
+            )}
+
+            {showDeleteConfirm && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-6 bg-white rounded-2xl border-2 border-red-100 shadow-xl space-y-4"
+              >
+                <div className="text-sm font-bold text-stone-900">Are you absolutely sure?</div>
+                <p className="text-xs text-stone-500 font-serif italic">This will erase all your progress and data permanently.</p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleDeleteAccount}
+                    className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-all"
+                  >
+                    Yes, Delete
+                  </button>
+                  <button 
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-3 bg-stone-100 text-stone-600 rounded-xl font-bold text-xs hover:bg-stone-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -2779,9 +3350,9 @@ const RankTest = ({ vocab }: { vocab: Vocabulary[] }) => {
   const startTest = () => {
     let testQuestions = [];
     
-    if (vocab.length >= 5) {
+    if (vocab.length >= 15) {
       const shuffled = [...vocab].sort(() => 0.5 - Math.random());
-      testQuestions = shuffled.slice(0, 5).map(v => {
+      testQuestions = shuffled.slice(0, 15).map(v => {
         const otherMeanings = vocab
           .filter(ov => ov.id !== v.id)
           .map(ov => ov.meaning)
@@ -2803,6 +3374,16 @@ const RankTest = ({ vocab }: { vocab: Vocabulary[] }) => {
         { q: '火', a: 'Hi', options: ['Hi', 'Ki', 'Mizu', 'Kaze'] },
         { q: '山', a: 'Yama', options: ['Yama', 'Kawa', 'Umi', 'Mori'] },
         { q: '人', a: 'Hito', options: ['Hito', 'Inu', 'Neko', 'Tori'] },
+        { q: '空', a: 'Sora', options: ['Sora', 'Umi', 'Yama', 'Kawa'] },
+        { q: '海', a: 'Umi', options: ['Umi', 'Sora', 'Yama', 'Kawa'] },
+        { q: '風', a: 'Kaze', options: ['Kaze', 'Hi', 'Mizu', 'Ki'] },
+        { q: '花', a: 'Hana', options: ['Hana', 'Ki', 'Kusa', 'Mori'] },
+        { q: '月', a: 'Tsuki', options: ['Tsuki', 'Hi', 'Hoshi', 'Sora'] },
+        { q: '日', a: 'Hi', options: ['Hi', 'Tsuki', 'Hoshi', 'Sora'] },
+        { q: '星', a: 'Hoshi', options: ['Hoshi', 'Tsuki', 'Hi', 'Sora'] },
+        { q: '雨', a: 'Ame', options: ['Ame', 'Yuki', 'Kaze', 'Kumo'] },
+        { q: '雪', a: 'Yuki', options: ['Yuki', 'Ame', 'Kaze', 'Kumo'] },
+        { q: '雲', a: 'Kumo', options: ['Kumo', 'Ame', 'Yuki', 'Kaze'] },
       ];
     }
     
@@ -2928,15 +3509,37 @@ const RankTest = ({ vocab }: { vocab: Vocabulary[] }) => {
               </div>
             </div>
 
-            <div className="pt-4">
+            <div className="pt-4 space-y-4">
+              <div className="p-6 bg-stone-50 rounded-3xl space-y-4 text-left">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                  <span>Library Requirement</span>
+                  <span className={cn(vocab.length >= 15 ? "text-emerald-600" : "text-amber-600")}>
+                    {vocab.length} / 15 Words
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min((vocab.length / 15) * 100, 100)}%` }}
+                    className={cn("h-full transition-colors", vocab.length >= 15 ? "bg-emerald-500" : "bg-stone-900")}
+                  />
+                </div>
+                {vocab.length < 15 && (
+                  <p className="text-[10px] text-red-500 font-serif italic">
+                    You need at least 15 words in your library to unlock this quest.
+                  </p>
+                )}
+              </div>
+
               <button 
                 onClick={startTest}
-                className="w-full py-5 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 flex items-center justify-center gap-3 group"
+                disabled={vocab.length < 15}
+                className="w-full py-5 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200 flex items-center justify-center gap-3 group disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Accept Quest</span>
                 <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
-              <p className="text-[10px] text-stone-400 mt-4 font-bold uppercase tracking-widest">Penalty for failure: None</p>
+              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Penalty for failure: None</p>
             </div>
           </motion.div>
         )}
@@ -3094,12 +3697,19 @@ const RankTest = ({ vocab }: { vocab: Vocabulary[] }) => {
 
 const Chatbot = () => {
   const { profile } = useContext(AuthContext);
-  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
-    { role: 'model', text: "Konnichiwa! I'm Sensei AI. How can I help you today?" }
-  ]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>(() => {
+    const saved = localStorage.getItem('chatbot_history');
+    return saved ? JSON.parse(saved) : [
+      { role: 'model', text: "Konnichiwa! I'm Sensei AI. How can I help you today?" }
+    ];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('chatbot_history', JSON.stringify(messages));
+  }, [messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -3164,7 +3774,11 @@ const Chatbot = () => {
   };
 
   const clearChat = () => {
-    setMessages([{ role: 'model', text: "Konnichiwa! I'm Sensei AI. How can I help you today?" }]);
+    if (confirm("Are you sure you want to clear your chat history?")) {
+      const initial = [{ role: 'model', text: "Konnichiwa! I'm Sensei AI. How can I help you today?" }];
+      setMessages(initial as any);
+      localStorage.removeItem('chatbot_history');
+    }
   };
 
   return (
@@ -3246,13 +3860,19 @@ const Notebook = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (isDemo) {
       const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
-      setNotes(localNotes);
+      setNotes(localNotes.map((n: any) => ({
+        ...n,
+        updatedAt: n.updatedAt?.seconds ? new Timestamp(n.updatedAt.seconds, n.updatedAt.nanoseconds) : Timestamp.now(),
+        createdAt: n.createdAt?.seconds ? new Timestamp(n.createdAt.seconds, n.createdAt.nanoseconds) : Timestamp.now()
+      })));
       setLoading(false);
       return;
     }
@@ -3267,38 +3887,78 @@ const Notebook = () => {
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, `users/${user.uid}/notes`);
+      setLoading(false);
     });
 
     return () => unsub();
   }, [user, isDemo]);
 
-  const handleAddNote = async (e: React.FormEvent) => {
+  const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newContent.trim()) return;
 
     const noteData = {
       title: newTitle,
       content: newContent,
-      createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
-      color: ['bg-blue-50', 'bg-emerald-50', 'bg-purple-50', 'bg-orange-50', 'bg-pink-50'][Math.floor(Math.random() * 5)]
     };
 
-    if (isDemo) {
-      const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
-      const updated = [{ id: Date.now().toString(), ...noteData }, ...localNotes];
-      localStorage.setItem('komorebi_notes', JSON.stringify(updated));
-      setNotes(updated as any);
-    } else if (user) {
-      await addDoc(collection(db, 'users', user.uid, 'notes'), noteData);
+    if (editingNoteId) {
+      if (isDemo) {
+        const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+        const updated = localNotes.map((n: any) => n.id === editingNoteId ? { ...n, ...noteData } : n);
+        localStorage.setItem('komorebi_notes', JSON.stringify(updated));
+        setNotes(updated);
+      } else if (user) {
+        await updateDoc(doc(db, 'users', user.uid, 'notes', editingNoteId), noteData);
+      }
+    } else {
+      const fullNoteData = {
+        ...noteData,
+        createdAt: Timestamp.now(),
+        isPinned: false,
+        color: ['bg-[#fdfcf0]', 'bg-[#f5f5f0]', 'bg-[#f0f4f8]', 'bg-[#f9f0ff]', 'bg-[#fff0f0]'][Math.floor(Math.random() * 5)]
+      };
+
+      if (isDemo) {
+        const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+        const updated = [{ id: Date.now().toString(), ...fullNoteData }, ...localNotes];
+        localStorage.setItem('komorebi_notes', JSON.stringify(updated));
+        setNotes(updated as any);
+      } else if (user) {
+        await addDoc(collection(db, 'users', user.uid, 'notes'), fullNoteData);
+      }
     }
 
     setNewTitle('');
     setNewContent('');
     setIsAdding(false);
+    setEditingNoteId(null);
+  };
+
+  const handleEdit = (note: Note) => {
+    setNewTitle(note.title);
+    setNewContent(note.content);
+    setEditingNoteId(note.id || null);
+    setIsAdding(true);
+  };
+
+  const togglePin = async (note: Note) => {
+    if (!note.id) return;
+    const newPinned = !note.isPinned;
+    
+    if (isDemo) {
+      const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      const updated = localNotes.map((n: any) => n.id === note.id ? { ...n, isPinned: newPinned } : n);
+      localStorage.setItem('komorebi_notes', JSON.stringify(updated));
+      setNotes(updated);
+    } else if (user) {
+      await updateDoc(doc(db, 'users', user.uid, 'notes', note.id), { isPinned: newPinned });
+    }
   };
 
   const deleteNote = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this note?")) return;
     if (isDemo) {
       const localNotes = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
       const updated = localNotes.filter((n: any) => n.id !== id);
@@ -3310,84 +3970,162 @@ const Notebook = () => {
     }
   };
 
+  const filteredNotes = notes
+    .filter(n => 
+      n.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      n.content.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return b.updatedAt.toMillis() - a.updatedAt.toMillis();
+    });
+
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-end">
+    <div className="space-y-8 pb-20">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
           <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Notebook</h2>
           <p className="text-stone-500 font-serif italic">Your personal space for Japanese study notes.</p>
         </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="p-4 bg-stone-900 text-white rounded-2xl shadow-xl hover:bg-stone-800 transition-all"
-        >
-          <PlusCircle className="w-6 h-6" />
-        </button>
+        <div className="flex gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+            <input 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search notes..."
+              className="w-full pl-10 pr-4 py-3 bg-white border border-stone-100 rounded-2xl text-sm focus:ring-2 focus:ring-stone-100 outline-none transition-all"
+            />
+          </div>
+          <button 
+            onClick={() => {
+              setIsAdding(true);
+              setEditingNoteId(null);
+              setNewTitle('');
+              setNewContent('');
+            }}
+            className="p-3 bg-stone-900 text-white rounded-2xl shadow-xl hover:bg-stone-800 transition-all flex items-center gap-2"
+          >
+            <PlusCircle className="w-6 h-6" />
+            <span className="hidden sm:inline font-bold text-xs uppercase tracking-widest">New Note</span>
+          </button>
+        </div>
       </div>
 
-      {isAdding && (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-xl space-y-4"
-        >
-          <input 
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Note Title..."
-            className="w-full p-4 bg-stone-50 border-none rounded-2xl font-bold text-xl outline-none focus:ring-2 focus:ring-stone-100"
-          />
-          <textarea 
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Write your notes here..."
-            rows={5}
-            className="w-full p-4 bg-stone-50 border-none rounded-2xl font-serif italic outline-none focus:ring-2 focus:ring-stone-100"
-          />
-          <div className="flex gap-4">
-            <button 
-              onClick={() => setIsAdding(false)}
-              className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handleAddNote}
-              className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold shadow-lg"
-            >
-              Save Note
-            </button>
-          </div>
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {isAdding && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-2xl space-y-6 relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-full h-1 bg-stone-900" />
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-editorial italic text-stone-900">
+                {editingNoteId ? 'Edit Note' : 'Create New Note'}
+              </h3>
+              <button onClick={() => setIsAdding(false)} className="text-stone-400 hover:text-stone-600">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+            <input 
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Give your note a title..."
+              className="w-full p-4 bg-stone-50 border-none rounded-2xl font-bold text-xl outline-none focus:ring-2 focus:ring-stone-100"
+            />
+            <textarea 
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              placeholder="Write your thoughts, grammar rules, or vocabulary here..."
+              rows={8}
+              className="w-full p-4 bg-stone-50 border-none rounded-2xl font-serif italic outline-none focus:ring-2 focus:ring-stone-100 resize-none"
+            />
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsAdding(false)}
+                className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold hover:bg-stone-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveNote}
+                className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold shadow-lg hover:bg-stone-800 transition-colors"
+              >
+                {editingNoteId ? 'Update Note' : 'Save Note'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {loading ? (
         <div className="flex justify-center py-20">
           <RotateCcw className="w-8 h-8 text-stone-200 animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {notes.length === 0 ? (
-            <div className="col-span-full text-center py-20 bg-white rounded-[3rem] border border-stone-50">
-              <p className="text-stone-400 font-editorial italic">Your notebook is empty. Start writing!</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredNotes.length === 0 ? (
+            <div className="col-span-full text-center py-24 bg-white rounded-[3rem] border border-stone-50 shadow-sm">
+              <div className="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <BookOpen className="w-10 h-10 text-stone-200" />
+              </div>
+              <p className="text-stone-400 font-editorial italic text-xl">
+                {searchQuery ? "No notes match your search." : "Your notebook is empty. Start writing!"}
+              </p>
             </div>
           ) : (
-            notes.map((note) => (
+            filteredNotes.map((note) => (
               <motion.div 
                 key={note.id}
                 layout
-                className={cn("p-8 rounded-[2.5rem] border border-stone-50 shadow-sm hover:shadow-md transition-all relative group", note.color || 'bg-white')}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  "p-8 rounded-[2.5rem] border border-stone-100 shadow-sm hover:shadow-xl transition-all relative group flex flex-col", 
+                  note.color || 'bg-white',
+                  note.isPinned && "ring-2 ring-stone-900 ring-offset-4"
+                )}
               >
-                <button 
-                  onClick={() => note.id && deleteNote(note.id)}
-                  className="absolute top-6 right-6 p-2 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <h3 className="text-xl font-bold text-stone-900 mb-3">{note.title}</h3>
-                <p className="text-stone-600 font-serif italic text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
-                <div className="mt-6 text-[8px] font-bold uppercase tracking-widest text-stone-400">
-                  {format(note.updatedAt.toDate(), 'MMM d, yyyy')}
+                <div className="absolute top-6 right-6 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                  <button 
+                    onClick={() => togglePin(note)}
+                    className={cn("p-2 rounded-full transition-colors", note.isPinned ? "text-stone-900 bg-stone-100" : "text-stone-300 hover:text-stone-600 hover:bg-stone-50")}
+                  >
+                    <Pin className={cn("w-4 h-4", note.isPinned && "fill-current")} />
+                  </button>
+                  <button 
+                    onClick={() => handleEdit(note)}
+                    className="p-2 text-stone-300 hover:text-stone-600 hover:bg-stone-50 rounded-full transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => note.id && deleteNote(note.id)}
+                    className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-stone-900 mb-4 pr-16">{note.title}</h3>
+                  <div className="text-stone-600 font-serif italic text-sm leading-relaxed prose prose-stone max-w-none">
+                    <ReactMarkdown>{note.content}</ReactMarkdown>
+                  </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-stone-900/5 flex justify-between items-center">
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-stone-400">
+                    {format(note.updatedAt.toDate(), 'MMM d, yyyy')}
+                  </div>
+                  {note.isPinned && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-stone-900 flex items-center gap-1">
+                      <Pin className="w-2 h-2 fill-current" /> Pinned
+                    </span>
+                  )}
                 </div>
               </motion.div>
             ))
@@ -4882,12 +5620,102 @@ const MissingApiKeyWarning = () => (
   </motion.div>
 );
 
+// --- PDF Export Helper ---
+
+const exportToPDF = async (vocab: any[], title: string = "My Japanese Library") => {
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  
+  const itemsPerPage = 80; // 20 per column, 4 columns
+  const totalPages = Math.ceil(vocab.length / itemsPerPage);
+
+  for (let p = 0; p < totalPages; p++) {
+    if (p > 0) pdf.addPage();
+    
+    const pageItems = vocab.slice(p * itemsPerPage, (p + 1) * itemsPerPage);
+    const itemsPerCol = Math.ceil(pageItems.length / 4);
+    
+    const element = document.createElement('div');
+    element.style.width = '1200px';
+    element.style.padding = '40px';
+    element.style.backgroundColor = 'white';
+    element.style.color = '#1c1917';
+    element.style.fontFamily = 'serif';
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+
+    const header = document.createElement('div');
+    header.style.textAlign = 'center';
+    header.style.marginBottom = '30px';
+    header.innerHTML = `
+      <h1 style="font-size: 32px; margin-bottom: 5px; font-style: italic;">${title}</h1>
+      <p style="font-size: 14px; color: #78716c;">Page ${p + 1} of ${totalPages} | Generated by Komorebi</p>
+      <div style="height: 1px; background: #e7e5e4; margin-top: 15px;"></div>
+    `;
+    element.appendChild(header);
+
+    const container = document.createElement('div');
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    container.style.gap = '25px';
+
+    const cols = [
+      document.createElement('div'),
+      document.createElement('div'),
+      document.createElement('div'),
+      document.createElement('div')
+    ];
+    cols.forEach(c => container.appendChild(c));
+    element.appendChild(container);
+
+    pageItems.forEach((item, index) => {
+      const globalIndex = p * itemsPerPage + index;
+      const colIndex = Math.floor(index / itemsPerCol);
+      const targetCol = cols[colIndex] || cols[3];
+      
+      const row = document.createElement('div');
+      row.style.padding = '10px 0';
+      row.style.borderBottom = '1px solid #f5f5f4';
+      row.style.display = 'flex';
+      row.style.gap = '10px';
+      row.style.alignItems = 'flex-start';
+      row.style.minHeight = '40px';
+
+      row.innerHTML = `
+        <span style="font-size: 9px; color: #a8a29e; font-family: monospace; width: 22px; margin-top: 4px; flex-shrink: 0;">${(globalIndex + 1).toString().padStart(3, '0')}</span>
+        <div style="flex: 1; min-width: 0; overflow-wrap: break-word; word-break: break-word;">
+          <div style="font-size: 15px; font-weight: bold; margin-bottom: 2px; color: #1c1917;">${item.word || item.japanese || item.jp}</div>
+          <div style="font-size: 8px; color: #78716c; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px;">${item.romaji || item.ro}</div>
+          <div style="font-size: 11px; font-style: italic; color: #44403c; line-height: 1.3;">${item.meaning || item.en}</div>
+        </div>
+      `;
+      targetCol.appendChild(row);
+    });
+
+    document.body.appendChild(element);
+    const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, (canvas.height * pageWidth) / canvas.width);
+    document.body.removeChild(element);
+  }
+
+  pdf.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`);
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(localStorage.getItem('komorebi_demo') === 'true');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game' | 'chatbot' | 'notebook' | 'invaders' | 'wordsearch' | 'shop' | 'room' | 'rankTest' | 'stats'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'vocab' | 'vocabList' | 'quiz' | 'dictionary' | 'flashcards' | 'translator' | 'kana' | 'phrasebook' | 'settings' | 'game' | 'chatbot' | 'notebook' | 'invaders' | 'wordsearch' | 'shop' | 'room' | 'rankTest' | 'stats'>(() => {
+    return (localStorage.getItem('komorebi_active_tab') as any) || 'dashboard';
+  });
+
+  const handleSetActiveTab = (tab: any) => {
+    setActiveTab(tab);
+    localStorage.setItem('komorebi_active_tab', tab);
+  };
 
   const logout = useCallback(async () => {
     if (isDemo) {
@@ -4898,7 +5726,7 @@ export default function App() {
   }, [isDemo]);
 
   useEffect(() => {
-    (window as any).setActiveTab = setActiveTab;
+    (window as any).setActiveTab = handleSetActiveTab;
     (window as any).logout = logout;
   }, [logout]);
   const [vocab, setVocab] = useState<Vocabulary[]>([]);
@@ -4927,6 +5755,74 @@ export default function App() {
       localStorage.removeItem('komorebi_demo');
     }
   };
+
+  // Migration logic for guest data
+  useEffect(() => {
+    if (!user) return;
+
+    const migrateData = async () => {
+      const guestProfile = localStorage.getItem('komorebi_profile');
+      const guestVocab = localStorage.getItem('komorebi_vocab');
+      const guestNotes = localStorage.getItem('komorebi_notes');
+
+      if (guestProfile || guestVocab || guestNotes) {
+        console.log("Migrating guest data...");
+        
+        // 1. Migrate Profile (merge XP, streak, etc.)
+        if (guestProfile) {
+          const p = JSON.parse(guestProfile);
+          const profileRef = doc(db, 'users', user.uid);
+          const docSnap = await getDoc(profileRef);
+          
+          if (docSnap.exists()) {
+            const existing = docSnap.data();
+            await updateDoc(profileRef, {
+              xp: (existing.xp || 0) + (p.xp || 0),
+              streakCount: Math.max(existing.streakCount || 0, p.streakCount || 0),
+              lastActiveDate: Timestamp.now()
+            });
+          }
+        }
+
+        // 2. Migrate Vocab
+        if (guestVocab) {
+          const v = JSON.parse(guestVocab);
+          const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
+          for (const item of v) {
+            const { id, ...data } = item;
+            // Check if already exists? (maybe by word/meaning)
+            // For simplicity, just add all.
+            await addDoc(vocabRef, {
+              ...data,
+              createdAt: data.createdAt?.seconds ? new Timestamp(data.createdAt.seconds, data.createdAt.nanoseconds) : Timestamp.now()
+            });
+          }
+        }
+
+        // 3. Migrate Notes
+        if (guestNotes) {
+          const n = JSON.parse(guestNotes);
+          const notesRef = collection(db, 'users', user.uid, 'notes');
+          for (const item of n) {
+            const { id, ...data } = item;
+            await addDoc(notesRef, {
+              ...data,
+              createdAt: data.createdAt?.seconds ? new Timestamp(data.createdAt.seconds, data.createdAt.nanoseconds) : Timestamp.now()
+            });
+          }
+        }
+
+        // Clear guest data
+        localStorage.removeItem('komorebi_profile');
+        localStorage.removeItem('komorebi_vocab');
+        localStorage.removeItem('komorebi_notes');
+        localStorage.removeItem('komorebi_demo');
+        console.log("Migration complete.");
+      }
+    };
+
+    migrateData();
+  }, [user]);
 
   // Auth listener
   useEffect(() => {
@@ -5055,7 +5951,8 @@ export default function App() {
   // Streak update logic for authenticated user
   useEffect(() => {
     if (!user || !profile || profile.dailyGoalMet) return;
-    if (todayVocabCount >= 5) {
+    const goal = profile.dailyGoal || 5;
+    if (todayVocabCount >= goal) {
       const profileRef = doc(db, 'users', user.uid);
       updateDoc(profileRef, { 
         dailyGoalMet: true, 
@@ -5064,24 +5961,54 @@ export default function App() {
         xp: (profile.xp || 0) + 50
       });
     }
-  }, [todayVocabCount, user, profile?.dailyGoalMet]);
+  }, [todayVocabCount, user, profile?.dailyGoalMet, profile?.dailyGoal]);
 
   // Streak update logic for demo mode
   useEffect(() => {
-    if (!isDemo || user || !profile || profile.dailyGoalMet) return;
-    if (todayVocabCount >= 5) {
+    if (!isDemo || !profile || profile.dailyGoalMet) return;
+    const goal = profile.dailyGoal || 5;
+    if (todayVocabCount >= goal) {
       const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
-      const updatedProfile = {
+      const newProfile = {
         ...p,
-        streakCount: (p.streakCount || 0) + 1,
         dailyGoalMet: true,
+        streakCount: (p.streakCount || 0) + 1,
         lastActiveDate: Timestamp.now(),
         xp: (p.xp || 0) + 50
       };
-      localStorage.setItem('komorebi_profile', JSON.stringify(updatedProfile));
-      setProfile(updatedProfile as any);
+      localStorage.setItem('komorebi_profile', JSON.stringify(newProfile));
+      setProfile(newProfile);
     }
-  }, [todayVocabCount, isDemo, user, profile?.dailyGoalMet]);
+  }, [todayVocabCount, isDemo, profile?.dailyGoalMet, profile?.dailyGoal]);
+
+  // Data listener for notes
+  const [notes, setNotes] = useState<Note[]>([]);
+  useEffect(() => {
+    if (!user) return;
+    const notesRef = collection(db, 'users', user.uid, 'notes');
+    const q = query(notesRef, orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setNotes(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `users/${user.uid}/notes`);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Demo mode notes
+  useEffect(() => {
+    if (!isDemo || user) return;
+    const loadNotes = () => {
+      const n = JSON.parse(localStorage.getItem('komorebi_notes') || '[]');
+      setNotes(n.map((item: any) => ({
+        ...item,
+        createdAt: item.createdAt?.seconds ? new Timestamp(item.createdAt.seconds, item.createdAt.nanoseconds) : Timestamp.now()
+      })));
+    };
+    loadNotes();
+    window.addEventListener('notes_update', loadNotes);
+    return () => window.removeEventListener('notes_update', loadNotes);
+  }, [isDemo, user]);
 
   // Safety timeout
   useEffect(() => {
@@ -5153,13 +6080,13 @@ export default function App() {
 
   // Default to demo mode if not logged in
   return (
-    <AuthContext.Provider value={{ user, profile, setProfile, loading, signIn, logout, setDemoMode, isDemo }}>
+    <AuthContext.Provider value={{ user, profile, setProfile, loading, signIn, logout, setDemoMode, isDemo, vocab, setActiveTab: handleSetActiveTab }}>
       <TTSProvider>
         <ErrorBoundary>
           {!user && !isDemo ? (
             <Login />
           ) : (
-            <AppContent activeTab={activeTab} setActiveTab={setActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} streakWarning={streakWarning} />
+            <AppContent activeTab={activeTab} setActiveTab={handleSetActiveTab} todayVocabCount={todayVocabCount} vocab={vocab} logout={logout} streakWarning={streakWarning} />
           )}
         </ErrorBoundary>
       </TTSProvider>
@@ -5499,7 +6426,7 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
                   transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
                 >
                   {activeTab === 'dashboard' && <Dashboard vocabCount={todayVocabCount} vocab={vocab} logout={logout} />}
-                  {activeTab === 'stats' && <Stats />}
+                  {activeTab === 'stats' && <Stats todayVocabCount={todayVocabCount} />}
                   {activeTab === 'vocab' && <VocabEntry vocab={vocab} />}
                   {activeTab === 'vocabList' && <VocabList vocab={vocab} />}
                   {activeTab === 'flashcards' && <Flashcards vocab={vocab} />}

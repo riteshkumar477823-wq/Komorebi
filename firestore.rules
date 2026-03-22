@@ -75,7 +75,7 @@ service cloud.firestore {
         'uid', 'displayName', 'email', 'streakCount', 'lastActiveDate', 
         'dailyGoalMet', 'xp', 'rank', 'title', 'dailyGoal', 'avatar', 
         'ownedAvatars', 'preferredTTS', 'notificationsEnabled', 'achievements', 
-        'pinnedAchievements', 'apiKeys', 'quoteCache', 'quoteStats'
+        'pinnedAchievements', 'apiKeys', 'quoteCache', 'quoteStats', 'role'
       ];
       return data.keys().hasAll(['uid', 'email']) &&
              data.keys().hasOnly(allowedFields) &&
@@ -97,7 +97,8 @@ service cloud.firestore {
              (!('pinnedAchievements' in data) || data.pinnedAchievements is list) &&
              (!('apiKeys' in data) || data.apiKeys is list) &&
              (!('quoteCache' in data) || data.quoteCache is list) &&
-             (!('quoteStats' in data) || data.quoteStats is map);
+             (!('quoteStats' in data) || data.quoteStats is map) &&
+             (!('role' in data) || data.role in ['admin', 'user', 'client']);
     }
 
     function isValidVocab(data) {
@@ -116,12 +117,13 @@ service cloud.firestore {
     }
 
     function isValidNote(data) {
-      let allowedFields = ['title', 'content', 'createdAt', 'updatedAt', 'color'];
+      let allowedFields = ['title', 'content', 'createdAt', 'updatedAt', 'color', 'isPinned'];
       return data.keys().hasAll(['title', 'content', 'createdAt', 'updatedAt']) &&
              data.keys().hasOnly(allowedFields) &&
              data.title is string && data.title.size() <= 200 &&
              data.content is string && data.content.size() <= 5000 &&
              (!('color' in data) || data.color is string) &&
+             (!('isPinned' in data) || data.isPinned is bool) &&
              data.createdAt is timestamp &&
              data.updatedAt is timestamp;
     }

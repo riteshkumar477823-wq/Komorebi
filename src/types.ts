@@ -29,6 +29,7 @@ export interface Note {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   color?: string;
+  isPinned?: boolean;
 }
 
 export interface Vocabulary {
