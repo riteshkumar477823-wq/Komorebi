@@ -20,6 +20,7 @@ export interface UserProfile {
   apiKeys?: string[]; // Multiple Gemini API keys
   quoteCache?: { text: string; translation: string }[];
   quoteStats?: { lastDate: string; count: number };
+  theme?: 'light' | 'dark' | 'system';
 }
 
 export interface Note {
@@ -42,6 +43,14 @@ export interface Vocabulary {
   mastery: number;
   parentId?: string;
   type?: 'main' | 'sub';
+}
+
+export interface DiscoveredWord {
+  id?: string;
+  jp: string;
+  ro: string;
+  en: string;
+  createdAt?: Timestamp;
 }
 
 export enum OperationType {

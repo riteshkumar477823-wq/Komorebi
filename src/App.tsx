@@ -29,7 +29,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { UserProfile, Vocabulary, OperationType, FirestoreErrorInfo, Note } from './types';
+import { UserProfile, Vocabulary, OperationType, FirestoreErrorInfo, Note, DiscoveredWord } from './types';
 import { 
   Flame, 
   BookOpen, 
@@ -79,7 +79,10 @@ import {
   Send,
   Award,
   ArrowRight,
-  LogIn
+  LogIn,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
@@ -252,8 +255,10 @@ const AuthContext = createContext<{
   setDemoMode: (val: boolean) => void;
   isDemo: boolean;
   vocab: Vocabulary[];
+  discoveredWords: DiscoveredWord[];
+  setDiscoveredWords: (words: DiscoveredWord[]) => void;
   setActiveTab: (tab: any) => void;
-}>({
+}>( {
   user: null,
   profile: null,
   setProfile: () => {},
@@ -263,6 +268,8 @@ const AuthContext = createContext<{
   setDemoMode: () => {},
   isDemo: false,
   vocab: [],
+  discoveredWords: [],
+  setDiscoveredWords: () => {},
   setActiveTab: () => {},
 });
 
@@ -902,14 +909,14 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
       {/* Top Section: Greeting */}
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
-          <h1 className="text-2xl font-editorial italic text-stone-900">
+          <h1 className="text-2xl font-editorial italic text-stone-900 dark:text-stone-100">
             Okaeri, {profile?.displayName?.split(' ')[0] || 'Learner'}
           </h1>
-          <p className="text-stone-400 text-xs font-serif italic">Ready for today's session?</p>
+          <p className="text-stone-400 dark:text-stone-500 text-xs font-serif italic">Ready for today's session?</p>
         </div>
-        <div className="flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-100 shadow-sm">
+        <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 rounded-2xl border border-amber-100 dark:border-amber-800 shadow-sm">
           <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
-          <span className="text-sm font-bold text-amber-900">{streak}</span>
+          <span className="text-sm font-bold text-amber-900 dark:text-amber-100">{streak}</span>
         </div>
       </div>
 
@@ -971,7 +978,7 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
       <div className="text-center px-4">
         {loadingQuote ? (
           <div className="h-12 flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-stone-200 border-t-stone-900 rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-stone-200 dark:border-stone-700 border-t-stone-900 dark:border-t-stone-100 rounded-full animate-spin" />
           </div>
         ) : quote ? (
           <motion.div
@@ -979,8 +986,8 @@ const Dashboard = ({ vocabCount, vocab, logout }: { vocabCount: number, vocab: V
             animate={{ opacity: 1 }}
             className="space-y-1"
           >
-            <p className="text-stone-900 font-serif text-lg italic">"{quote.text}"</p>
-            <p className="text-stone-400 text-[10px] uppercase tracking-widest">{quote.translation}</p>
+            <p className="text-stone-900 dark:text-stone-100 font-serif text-lg italic">"{quote.text}"</p>
+            <p className="text-stone-400 dark:text-stone-500 text-[10px] uppercase tracking-widest">{quote.translation}</p>
           </motion.div>
         ) : null}
       </div>
@@ -1216,20 +1223,20 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-editorial italic text-stone-900 mb-1">Vocabulary Library</h2>
-          <p className="text-stone-500 font-serif italic text-xs">Your personal collection of words and phrases.</p>
+          <h2 className="text-2xl font-editorial italic text-stone-900 dark:text-stone-100 mb-1">Vocabulary Library</h2>
+          <p className="text-stone-500 dark:text-stone-400 font-serif italic text-xs">Your personal collection of words and phrases.</p>
         </div>
         <div className="flex items-center gap-3 self-start">
-          <div className="flex items-center gap-2 px-4 py-2 bg-white text-stone-900 rounded-full border border-stone-100 shadow-sm">
-            <BookOpen className="w-4 h-4 text-stone-400" />
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 rounded-full border border-stone-100 dark:border-stone-800 shadow-sm">
+            <BookOpen className="w-4 h-4 text-stone-400 dark:text-stone-500" />
             <div className="flex flex-col leading-none">
               <span className="font-bold text-base">{vocab.length}</span>
-              <span className="text-[7px] font-bold uppercase tracking-widest text-stone-400">Total Words</span>
+              <span className="text-[7px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Total Words</span>
             </div>
           </div>
           <button 
             onClick={() => exportToPDF(vocab, "My Vocabulary Library")}
-            className="px-4 py-2 bg-stone-900 text-white rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-800 transition-all flex items-center gap-2 shadow-lg shadow-stone-100"
+            className="px-4 py-2 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-800 dark:hover:bg-stone-200 transition-all flex items-center gap-2 shadow-lg shadow-stone-100 dark:shadow-none"
           >
             <Download className="w-3 h-3" />
             Export PDF
@@ -1238,19 +1245,19 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
       </div>
 
       <div className="relative mb-6">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 w-4 h-4" />
         <input 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search..."
-          className="w-full p-4 pl-12 bg-white border border-stone-100 rounded-2xl shadow-sm focus:border-stone-900 transition-all text-base outline-none"
+          className="w-full p-4 pl-12 bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 text-stone-900 dark:text-stone-100 rounded-2xl shadow-sm focus:border-stone-900 dark:focus:border-stone-100 transition-all text-base outline-none"
         />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredVocab.length === 0 ? (
-          <div className="col-span-full text-center py-12 bg-white rounded-[2rem] border border-stone-50">
-            <p className="text-stone-400 font-editorial italic text-sm">No words found matching your search.</p>
+          <div className="col-span-full text-center py-12 bg-white dark:bg-stone-900 rounded-[2rem] border border-stone-50 dark:border-stone-800">
+            <p className="text-stone-400 dark:text-stone-500 font-editorial italic text-sm">No words found matching your search.</p>
           </div>
         ) : (
           filteredVocab.map((v) => (
@@ -1259,28 +1266,28 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
               layout
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="group bg-white p-4 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              className="group bg-white dark:bg-stone-900 p-4 rounded-2xl border border-stone-100 dark:border-stone-800 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center text-lg font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors shrink-0">
+                <div className="w-10 h-10 bg-stone-50 dark:bg-stone-800 rounded-xl flex items-center justify-center text-lg font-serif text-stone-900 dark:text-stone-100 group-hover:bg-stone-900 dark:group-hover:bg-stone-100 group-hover:text-white dark:group-hover:text-stone-900 transition-colors shrink-0">
                   {v.japanese[0]}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-lg font-serif text-stone-900">{v.japanese}</span>
-                    <span className="text-stone-400 font-mono text-[8px] uppercase tracking-widest">{v.romaji}</span>
-                    <div className="px-1.5 py-0.5 bg-stone-50 rounded text-[7px] font-bold text-stone-400 uppercase tracking-tighter">
+                    <span className="text-lg font-serif text-stone-900 dark:text-stone-100">{v.japanese}</span>
+                    <span className="text-stone-400 dark:text-stone-500 font-mono text-[8px] uppercase tracking-widest">{v.romaji}</span>
+                    <div className="px-1.5 py-0.5 bg-stone-50 dark:bg-stone-800 rounded text-[7px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-tighter">
                       {v.mastery}%
                     </div>
                   </div>
-                  <p className="text-stone-500 font-editorial italic text-sm">{v.meaning}</p>
+                  <p className="text-stone-500 dark:text-stone-400 font-editorial italic text-sm">{v.meaning}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 justify-end border-t sm:border-t-0 pt-3 sm:pt-0">
+              <div className="flex items-center gap-1.5 justify-end border-t dark:border-stone-800 sm:border-t-0 pt-3 sm:pt-0">
                 <button 
                   onClick={() => play(v.japanese)}
                   disabled={ttsLoading}
-                  className="p-2 text-stone-400 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                  className="p-2 text-stone-400 dark:text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800 rounded-full transition-all"
                   title="Speak"
                 >
                   <Volume2 className={cn("w-4 h-4", ttsLoading && "animate-pulse")} />
@@ -1292,7 +1299,7 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
                     setEditMeaning(v.meaning);
                     setEditRomaji(v.romaji || '');
                   }}
-                  className="p-3 text-stone-400 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                  className="p-3 text-stone-400 dark:text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800 rounded-full transition-all"
                   title="Edit"
                 >
                   <Pencil className="w-5 h-5" />
@@ -1300,7 +1307,7 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
                 <button 
                   onClick={() => v.id && handleDelete(v.id)}
                   disabled={isDeleting === v.id}
-                  className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                  className="p-3 text-stone-400 dark:text-stone-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all"
                   title="Delete"
                 >
                   <Trash2 className={cn("w-5 h-5", isDeleting === v.id && "animate-pulse")} />
@@ -1322,48 +1329,48 @@ const VocabList = ({ vocab }: { vocab: Vocabulary[] }) => {
               onClick={() => setEditingVocab(null)}
               className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
             />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-[3rem] shadow-2xl p-10 overflow-hidden"
-            >
-              <h3 className="text-3xl font-editorial italic text-stone-900 mb-8">Edit Word</h3>
-              <form onSubmit={handleUpdate} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Japanese</label>
-                  <input 
-                    value={editJapanese}
-                    onChange={(e) => setEditJapanese(e.target.value)}
-                    className="w-full p-4 bg-stone-50 rounded-2xl font-serif text-xl outline-none focus:ring-2 focus:ring-stone-100"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Romaji</label>
-                  <input 
-                    value={editRomaji}
-                    onChange={(e) => setEditRomaji(e.target.value)}
-                    className="w-full p-4 bg-stone-50 rounded-2xl font-mono text-sm outline-none focus:ring-2 focus:ring-stone-100"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Meaning</label>
-                  <input 
-                    value={editMeaning}
-                    onChange={(e) => setEditMeaning(e.target.value)}
-                    className="w-full p-4 bg-stone-50 rounded-2xl font-editorial italic outline-none focus:ring-2 focus:ring-stone-100"
-                    required
-                  />
-                </div>
-                <div className="flex gap-4 pt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setEditingVocab(null)}
-                    className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold hover:bg-stone-100 transition-all"
-                  >
-                    Cancel
-                  </button>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-[3rem] shadow-2xl p-10 overflow-hidden border border-stone-100 dark:border-stone-800"
+              >
+                <h3 className="text-3xl font-editorial italic text-stone-900 dark:text-stone-100 mb-8">Edit Word</h3>
+                <form onSubmit={handleUpdate} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Japanese</label>
+                    <input 
+                      value={editJapanese}
+                      onChange={(e) => setEditJapanese(e.target.value)}
+                      className="w-full p-4 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 rounded-2xl font-serif text-xl outline-none focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Romaji</label>
+                    <input 
+                      value={editRomaji}
+                      onChange={(e) => setEditRomaji(e.target.value)}
+                      className="w-full p-4 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 rounded-2xl font-mono text-sm outline-none focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Meaning</label>
+                    <input 
+                      value={editMeaning}
+                      onChange={(e) => setEditMeaning(e.target.value)}
+                      className="w-full p-4 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 rounded-2xl font-editorial italic outline-none focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700"
+                      required
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button 
+                      type="button"
+                      onClick={() => setEditingVocab(null)}
+                      className="flex-1 py-4 bg-stone-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-full font-bold hover:bg-stone-100 dark:hover:bg-stone-700 transition-all"
+                    >
+                      Cancel
+                    </button>
                   <button 
                     type="submit"
                     className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all shadow-xl shadow-stone-200"
@@ -2104,26 +2111,26 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-stone-100"
+            className="bg-white dark:bg-stone-900 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-stone-100 dark:border-stone-800"
           >
-            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6">
-              <AlertCircle className="w-8 h-8 text-amber-500" />
+            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="w-8 h-8 text-amber-500 dark:text-amber-400" />
             </div>
-            <h3 className="text-2xl font-editorial italic text-stone-900 mb-2">Duplicate Meaning</h3>
-            <p className="text-stone-500 font-serif italic text-sm mb-8">
-              The meaning "<span className="text-stone-900 font-bold">{meaning}</span>" already exists for "<span className="text-stone-900 font-bold">{duplicateMatch?.japanese}</span>". 
+            <h3 className="text-2xl font-editorial italic text-stone-900 dark:text-stone-100 mb-2">Duplicate Meaning</h3>
+            <p className="text-stone-500 dark:text-stone-400 font-serif italic text-sm mb-8">
+              The meaning "<span className="text-stone-900 dark:text-stone-100 font-bold">{meaning}</span>" already exists for "<span className="text-stone-900 dark:text-stone-100 font-bold">{duplicateMatch?.japanese}</span>". 
               Would you like to add this as a sub-type of the existing word?
             </p>
             <div className="grid grid-cols-2 gap-4">
               <button 
                 onClick={() => handleSubmit(undefined, true)}
-                className="py-4 bg-stone-900 text-white rounded-full font-bold hover:bg-stone-800 transition-all"
+                className="py-4 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-full font-bold hover:bg-stone-800 dark:hover:bg-stone-200 transition-all"
               >
                 Yes, Add Sub-type
               </button>
               <button 
                 onClick={() => setShowDuplicateModal(false)}
-                className="py-4 bg-stone-50 text-stone-900 rounded-full font-bold hover:bg-stone-100 transition-all"
+                className="py-4 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 rounded-full font-bold hover:bg-stone-100 dark:hover:bg-stone-700 transition-all"
               >
                 Cancel
               </button>
@@ -2133,45 +2140,45 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
       )}
       <div className="xl:col-span-2">
         <div className="mb-6">
-          <h2 className="text-3xl font-editorial italic text-stone-900 mb-1">New Word</h2>
-          <p className="text-stone-500 font-serif italic text-xs">Build your personal dictionary, one word at a time.</p>
+          <h2 className="text-3xl font-editorial italic text-stone-900 dark:text-stone-100 mb-1">New Word</h2>
+          <p className="text-stone-500 dark:text-stone-400 font-serif italic text-xs">Build your personal dictionary, one word at a time.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2rem] shadow-sm border border-stone-50 space-y-5">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-stone-900 p-6 rounded-[2rem] shadow-sm border border-stone-50 dark:border-stone-800 space-y-5">
           <div className="space-y-2">
-            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400">Japanese (Kanji/Kana)</label>
+            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400 dark:text-stone-500">Japanese (Kanji/Kana)</label>
             <input 
               value={japanese}
               onChange={(e) => setJapanese(e.target.value)}
               placeholder="e.g. 木漏れ日"
-              className="w-full p-4 bg-stone-50 border-none rounded-xl focus:ring-2 focus:ring-stone-100 transition-all text-xl font-serif"
+              className="w-full p-4 bg-stone-50 dark:bg-stone-800 border-none rounded-xl focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 transition-all text-xl font-serif text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400">Romaji</label>
+            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400 dark:text-stone-500">Romaji</label>
             <input 
               value={romaji}
               onChange={(e) => setRomaji(e.target.value)}
               placeholder="e.g. Komorebi"
-              className="w-full p-4 bg-stone-50 border-none rounded-xl focus:ring-2 focus:ring-stone-100 transition-all font-mono text-xs"
+              className="w-full p-4 bg-stone-50 dark:bg-stone-800 border-none rounded-xl focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 transition-all font-mono text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400">Meaning</label>
+            <label className="text-[9px] font-bold uppercase tracking-[0.3em] text-stone-400 dark:text-stone-500">Meaning</label>
             <input 
               value={meaning}
               onChange={(e) => setMeaning(e.target.value)}
               placeholder="e.g. Sunlight filtering through leaves"
-              className="w-full p-4 bg-stone-50 border-none rounded-xl focus:ring-2 focus:ring-stone-100 transition-all font-editorial italic text-base"
+              className="w-full p-4 bg-stone-50 dark:bg-stone-800 border-none rounded-xl focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 transition-all font-editorial italic text-base text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
               required
             />
           </div>
           <button 
             disabled={loading}
             className={cn(
-              "w-full py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2 text-base shadow-lg shadow-stone-100",
-              success ? "bg-emerald-500 text-white" : "bg-stone-900 text-white hover:bg-stone-800"
+              "w-full py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2 text-base shadow-lg shadow-stone-100 dark:shadow-none",
+              success ? "bg-emerald-500 text-white" : "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-stone-200"
             )}
           >
             {loading ? "Adding..." : success ? <><CheckCircle2 className="w-5 h-5" /> Added!</> : <><PlusCircle className="w-5 h-5" /> Add Word</>}
@@ -2181,14 +2188,14 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
 
       <div className="xl:col-span-3">
         <div className="mb-10 flex items-center justify-between">
-          <h2 className="text-4xl font-editorial italic text-stone-900">Recent Words</h2>
-          <span className="text-stone-400 font-mono text-xs uppercase tracking-widest">{vocab.length} Total</span>
+          <h2 className="text-4xl font-editorial italic text-stone-900 dark:text-stone-100">Recent Words</h2>
+          <span className="text-stone-400 dark:text-stone-500 font-mono text-xs uppercase tracking-widest">{vocab.length} Total</span>
         </div>
 
         <div className="space-y-4 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
           {vocab.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-[3rem] border border-stone-50">
-              <p className="text-stone-400 font-editorial italic">Your list is empty. Add your first word!</p>
+            <div className="text-center py-20 bg-white dark:bg-stone-900 rounded-[3rem] border border-stone-50 dark:border-stone-800">
+              <p className="text-stone-400 dark:text-stone-500 font-editorial italic">Your list is empty. Add your first word!</p>
             </div>
           ) : (
             vocab.filter(v => v.type !== 'sub').map((v) => {
@@ -2198,49 +2205,49 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
                   <motion.div 
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="group bg-white p-6 rounded-3xl border border-stone-50 shadow-sm hover:shadow-md transition-all flex items-center justify-between"
+                    className="group bg-white dark:bg-stone-900 p-6 rounded-3xl border border-stone-50 dark:border-stone-800 shadow-sm hover:shadow-md transition-all flex items-center justify-between"
                   >
                     <div className="flex items-center gap-6">
-                      <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 group-hover:bg-stone-900 group-hover:text-white transition-colors">
+                      <div className="w-14 h-14 bg-stone-50 dark:bg-stone-800 rounded-2xl flex items-center justify-center text-2xl font-serif text-stone-900 dark:text-stone-100 group-hover:bg-stone-900 dark:group-hover:bg-stone-100 group-hover:text-white dark:group-hover:text-stone-900 transition-colors">
                         {v.japanese[0]}
                       </div>
                       <div>
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl font-serif text-stone-900">{v.japanese}</span>
-                          <span className="text-stone-400 font-mono text-[10px] uppercase tracking-widest">{v.romaji}</span>
+                          <span className="text-2xl font-serif text-stone-900 dark:text-stone-100">{v.japanese}</span>
+                          <span className="text-stone-400 dark:text-stone-500 font-mono text-[10px] uppercase tracking-widest">{v.romaji}</span>
                         </div>
-                        <p className="text-stone-500 font-editorial italic">{v.meaning}</p>
+                        <p className="text-stone-500 dark:text-stone-400 font-editorial italic">{v.meaning}</p>
                       </div>
                     </div>
                     <button 
                       onClick={() => play(v.japanese)}
                       disabled={ttsLoading}
-                      className="p-3 text-stone-300 hover:text-stone-900 hover:bg-stone-50 rounded-full transition-all"
+                      className="p-3 text-stone-300 dark:text-stone-600 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800 rounded-full transition-all"
                     >
                       <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
                     </button>
                   </motion.div>
                   
                   {subs.length > 0 && (
-                    <div className="ml-12 space-y-2 border-l-2 border-stone-100 pl-6">
+                    <div className="ml-12 space-y-2 border-l-2 border-stone-100 dark:border-stone-800 pl-6">
                       {subs.map(sub => (
                         <motion.div 
                           key={sub.id}
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="bg-stone-50/50 p-4 rounded-2xl flex items-center justify-between group/sub"
+                          className="bg-stone-50/50 dark:bg-stone-800/50 p-4 rounded-2xl flex items-center justify-between group/sub"
                         >
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-lg font-serif text-stone-400 group-hover/sub:bg-stone-900 group-hover/sub:text-white transition-colors">
+                            <div className="w-10 h-10 bg-white dark:bg-stone-900 rounded-xl flex items-center justify-center text-lg font-serif text-stone-400 dark:text-stone-500 group-hover/sub:bg-stone-900 dark:group-hover/sub:bg-stone-100 group-hover/sub:text-white dark:group-hover/sub:text-stone-900 transition-colors">
                               {sub.japanese[0]}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="text-lg font-serif text-stone-900">{sub.japanese}</span>
-                                <span className="text-stone-400 font-mono text-[8px] uppercase tracking-widest">{sub.romaji}</span>
-                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[6px] font-bold uppercase tracking-widest rounded-full border border-amber-100">Sub</span>
+                                <span className="text-lg font-serif text-stone-900 dark:text-stone-100">{sub.japanese}</span>
+                                <span className="text-stone-400 dark:text-stone-500 font-mono text-[8px] uppercase tracking-widest">{sub.romaji}</span>
+                                <span className="px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[6px] font-bold uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-800">Sub</span>
                               </div>
-                              <p className="text-stone-400 font-editorial italic text-sm">{sub.meaning}</p>
+                              <p className="text-stone-400 dark:text-stone-500 font-editorial italic text-sm">{sub.meaning}</p>
                             </div>
                           </div>
                           <button 
@@ -2265,17 +2272,47 @@ const VocabEntry = ({ vocab }: { vocab: Vocabulary[] }) => {
 };
 
 const Dictionary = () => {
-  const { profile } = useContext(AuthContext);
+  const { profile, user, isDemo, discoveredWords, setDiscoveredWords } = useContext(AuthContext);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCommon, setShowCommon] = useState(true);
-  const [discoveredWords, setDiscoveredWords] = useState<{ jp: string; ro: string; en: string }[]>(() => {
-    const saved = localStorage.getItem('discovered_words');
-    return saved ? JSON.parse(saved) : [];
-  });
   const [discovering, setDiscovering] = useState(false);
+  const [savingWord, setSavingWord] = useState<string | null>(null);
   const { play, loading: ttsLoading } = useTTSContext();
+
+  const handleSaveToLibrary = async (word: { jp: string; ro: string; en: string }) => {
+    if (!isDemo && !user) return;
+    setSavingWord(word.jp);
+    try {
+      const vocabData = {
+        uid: isDemo ? 'guest' : user!.uid,
+        japanese: word.jp,
+        meaning: word.en,
+        romaji: word.ro,
+        createdAt: Timestamp.now(),
+        mastery: 0,
+        type: 'main' as 'main' | 'sub'
+      };
+
+      if (isDemo) {
+        const localVocab = JSON.parse(localStorage.getItem('komorebi_vocab') || '[]');
+        const newVocab = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...vocabData
+        };
+        localStorage.setItem('komorebi_vocab', JSON.stringify([newVocab, ...localVocab]));
+        window.dispatchEvent(new Event('vocab_update'));
+      } else if (user) {
+        const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
+        await addDoc(vocabRef, vocabData);
+      }
+    } catch (error) {
+      console.error("Save Error:", error);
+    } finally {
+      setSavingWord(null);
+    }
+  };
 
   const commonWords = [
     { jp: "こんにちは", ro: "Konnichiwa", en: "Hello / Good afternoon" },
@@ -2313,11 +2350,23 @@ const Dictionary = () => {
 
       const words = JSON.parse(response.text || "[]");
       if (Array.isArray(words)) {
-        const updatedWords = [...discoveredWords, ...words];
+        const newWords = words.map(w => ({ ...w, createdAt: Timestamp.now() }));
+        const updatedWords = [...discoveredWords, ...newWords];
         // Remove duplicates based on Japanese text
         const uniqueWords = Array.from(new Map(updatedWords.map(item => [item['jp'], item])).values());
-        setDiscoveredWords(uniqueWords);
-        localStorage.setItem('discovered_words', JSON.stringify(uniqueWords));
+        
+        if (isDemo) {
+          setDiscoveredWords(uniqueWords);
+          localStorage.setItem('discovered_words', JSON.stringify(uniqueWords));
+        } else if (user) {
+          const discoveredRef = collection(db, 'users', user.uid, 'discovered_words');
+          for (const word of newWords) {
+            // Check if already exists in unique set to avoid redundant writes
+            if (!discoveredWords.some(dw => dw.jp === word.jp)) {
+              await addDoc(discoveredRef, word);
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Discovery Error:", error);
@@ -2376,14 +2425,14 @@ const Dictionary = () => {
         className="mb-8 flex justify-between items-end"
       >
         <div>
-          <h2 className="text-3xl font-editorial italic text-stone-900 mb-2">Japanese Dictionary</h2>
-          <p className="text-stone-500 font-serif italic">Search for any word or browse common expressions below.</p>
+          <h2 className="text-3xl font-editorial italic text-stone-900 dark:text-stone-100 mb-2">Japanese Dictionary</h2>
+          <p className="text-stone-500 dark:text-stone-400 font-serif italic">Search for any word or browse common expressions below.</p>
         </div>
         <div className="flex items-center gap-3">
           {displayWords.length > 0 && (
             <button 
               onClick={() => exportToPDF(displayWords, "Dictionary Words")}
-              className="px-4 py-2 bg-stone-50 text-stone-600 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-100 transition-all flex items-center gap-2"
+              className="px-4 py-2 bg-stone-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-stone-100 dark:hover:bg-stone-700 transition-all flex items-center gap-2"
             >
               <Download className="w-3 h-3" />
               Export PDF
@@ -2392,7 +2441,7 @@ const Dictionary = () => {
           <button 
             onClick={handleDiscover}
             disabled={discovering}
-            className="px-4 py-2 bg-amber-50 text-amber-600 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-amber-100 transition-all disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-amber-100 dark:hover:bg-amber-800 transition-all disabled:opacity-50 flex items-center gap-2"
           >
           {discovering ? (
             <>
@@ -2448,10 +2497,20 @@ const Dictionary = () => {
               >
                 <div className="flex justify-between items-start mb-2">
                   <span className="text-2xl font-serif text-stone-900">{word.jp}</span>
-                  <Volume2 
-                    onClick={(e) => { e.stopPropagation(); play(word.jp); }}
-                    className="w-4 h-4 text-stone-300 group-hover:text-stone-900 transition-colors" 
-                  />
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleSaveToLibrary(word); }}
+                      disabled={savingWord === word.jp}
+                      className="p-2 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all disabled:opacity-50"
+                      title="Save to Library"
+                    >
+                      {savingWord === word.jp ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    </button>
+                    <Volume2 
+                      onClick={(e) => { e.stopPropagation(); play(word.jp); }}
+                      className="w-4 h-4 text-stone-300 group-hover:text-stone-900 transition-colors cursor-pointer" 
+                    />
+                  </div>
                 </div>
                 <div className="text-xs font-mono text-stone-400 uppercase tracking-widest mb-1">{word.ro}</div>
                 <div className="text-sm text-stone-600 font-editorial italic">{word.en}</div>
@@ -2464,9 +2523,24 @@ const Dictionary = () => {
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-8 rounded-[2rem] shadow-sm border border-stone-100 relative"
+            className="bg-white dark:bg-stone-900 p-8 rounded-[2rem] shadow-sm border border-stone-100 dark:border-stone-800 relative"
           >
             <div className="absolute top-6 right-6 flex gap-2">
+              <button 
+                onClick={() => {
+                  // Try to extract word, romaji, and meaning from Markdown
+                  const lines = result.split('\n').filter(l => l.trim().length > 0);
+                  const jp = lines.find(l => /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(l))?.replace(/[#*]/g, '').trim() || query;
+                  const ro = lines.find(l => l.toLowerCase().includes('romaji'))?.split(':')?.[1]?.trim() || '';
+                  const en = lines.find(l => l.toLowerCase().includes('definition') || l.toLowerCase().includes('meaning'))?.split(':')?.[1]?.trim() || query;
+                  handleSaveToLibrary({ jp, ro, en });
+                }}
+                disabled={savingWord === 'search_result'}
+                className="p-3 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all"
+                title="Save to Library"
+              >
+                {savingWord === 'search_result' ? <RotateCcw className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+              </button>
               <button 
                 onClick={() => { setResult(null); setShowCommon(true); setQuery(''); }}
                 className="p-3 bg-stone-50 rounded-full text-stone-400 hover:text-stone-900 transition-all"
@@ -2485,7 +2559,7 @@ const Dictionary = () => {
                 <Volume2 className={cn("w-5 h-5", ttsLoading && "animate-pulse")} />
               </button>
             </div>
-            <div className="prose prose-stone max-w-none prose-headings:font-editorial prose-headings:italic">
+            <div className="prose prose-stone dark:prose-invert max-w-none prose-headings:font-editorial prose-headings:italic">
               <ReactMarkdown>{result}</ReactMarkdown>
             </div>
           </motion.div>
@@ -2503,9 +2577,9 @@ const Flashcards = ({ vocab }: { vocab: Vocabulary[] }) => {
   if (vocab.length === 0) {
     return (
       <div className="text-center py-12">
-        <BookOpen className="w-12 h-12 text-stone-200 mx-auto mb-4" />
-        <h3 className="text-xl font-editorial italic text-stone-900 mb-1">Your collection is empty</h3>
-        <p className="text-stone-500 font-serif italic text-sm">Add some words to start reviewing with flashcards.</p>
+        <BookOpen className="w-12 h-12 text-stone-200 dark:text-stone-800 mx-auto mb-4" />
+        <h3 className="text-xl font-editorial italic text-stone-900 dark:text-stone-100 mb-1">Your collection is empty</h3>
+        <p className="text-stone-500 dark:text-stone-400 font-serif italic text-sm">Add some words to start reviewing with flashcards.</p>
       </div>
     );
   }
@@ -2515,8 +2589,8 @@ const Flashcards = ({ vocab }: { vocab: Vocabulary[] }) => {
   return (
     <div className="max-w-md mx-auto py-2">
       <div className="mb-4 flex justify-between items-center">
-        <h2 className="text-xl font-editorial italic text-stone-900">Review</h2>
-        <span className="text-stone-400 font-mono text-[10px]">{currentIndex + 1} / {vocab.length}</span>
+        <h2 className="text-xl font-editorial italic text-stone-900 dark:text-stone-100">Review</h2>
+        <span className="text-stone-400 dark:text-stone-500 font-mono text-[10px]">{currentIndex + 1} / {vocab.length}</span>
       </div>
 
       <div 
@@ -2759,6 +2833,21 @@ const Quiz = ({ vocab }: { vocab: Vocabulary[] }) => {
   );
 };
 
+const applyThemeToElement = (theme: 'light' | 'dark' | 'system') => {
+  if (typeof window === 'undefined') return;
+  const root = window.document.documentElement;
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  root.classList.remove('light', 'dark');
+  
+  let effectiveTheme = theme;
+  if (theme === 'system') {
+    effectiveTheme = mediaQuery.matches ? 'dark' : 'light';
+  }
+  
+  root.classList.add(effectiveTheme);
+  root.style.colorScheme = effectiveTheme;
+};
+
 const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   const { profile, user, isDemo, setProfile, setDemoMode } = useContext(AuthContext);
   const { mode, setTTSMode } = useTTSContext();
@@ -2766,7 +2855,29 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   const [dailyGoal, setDailyGoal] = useState(profile?.dailyGoal || 5);
   const [avatar, setAvatar] = useState(profile?.avatar || '🦊');
   const [notificationsEnabled, setNotificationsEnabled] = useState(profile?.notificationsEnabled ?? true);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(profile?.theme || 'system');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (profile?.theme) {
+      setTheme(profile.theme);
+    }
+  }, [profile?.theme]);
+
+  useEffect(() => {
+    applyThemeToElement(theme);
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = () => {
+      if (theme === 'system') {
+        applyThemeToElement('system');
+      }
+    };
+    
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, [theme]);
+
   const hasApiKey = !!getApiKey();
 
   const avatars = ['🦊', '🐱', '🐶', '🐼', '🐨', '🦁', '🐯', '🐸', '🐵', '🦉'];
@@ -2793,7 +2904,8 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
         displayName: name, 
         dailyGoal: Number(dailyGoal),
         avatar: avatar,
-        notificationsEnabled: notificationsEnabled
+        notificationsEnabled: notificationsEnabled,
+        theme: theme
       };
       if (isDemo) {
         const p = JSON.parse(localStorage.getItem('komorebi_profile') || '{}');
@@ -2964,23 +3076,23 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
   return (
     <div className="max-w-2xl mx-auto space-y-10 pb-12">
       <div>
-        <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Settings</h2>
-        <p className="text-stone-500 font-serif italic">Personalize your learning experience.</p>
+        <h2 className="text-4xl font-editorial italic text-stone-900 dark:text-stone-100 mb-2">Settings</h2>
+        <p className="text-stone-500 dark:text-stone-400 font-serif italic">Personalize your learning experience.</p>
       </div>
 
       <div className="space-y-6">
         <section className="space-y-6">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">AI & API Keys</h3>
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">AI & API Keys</h3>
           <div className="space-y-4">
-            <div className="p-4 bg-stone-50 rounded-3xl border border-stone-100 space-y-4">
+            <div className="p-4 bg-stone-50 dark:bg-stone-800/50 rounded-3xl border border-stone-100 dark:border-stone-800 space-y-4">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Gemini API Keys</div>
+                <div className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-widest">Gemini API Keys</div>
                 <button 
                   onClick={() => {
                     const newKeys = [...(profile?.apiKeys || []), ''];
                     handleUpdateApiKeys(newKeys);
                   }}
-                  className="text-[10px] font-bold text-stone-900 hover:underline uppercase tracking-widest"
+                  className="text-[10px] font-bold text-stone-900 dark:text-stone-100 hover:underline uppercase tracking-widest"
                 >
                   + Add Key
                 </button>
@@ -2997,7 +3109,7 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                         newKeys[idx] = e.target.value;
                         handleUpdateApiKeys(newKeys);
                       }}
-                      className="flex-1 p-3 bg-white rounded-xl text-xs font-mono border border-stone-100 focus:ring-2 focus:ring-stone-200 outline-none transition-all"
+                      className="flex-1 p-3 bg-white dark:bg-stone-900 rounded-xl text-xs font-mono border border-stone-100 dark:border-stone-800 text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-stone-200 dark:focus:ring-stone-700 outline-none transition-all"
                       placeholder="Enter API key..."
                     />
                     <button 
@@ -3013,7 +3125,7 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                 ))}
               </div>
               
-              <p className="text-[9px] text-stone-400 font-serif italic">
+              <p className="text-[9px] text-stone-400 dark:text-stone-500 font-serif italic">
                 Add multiple keys for automatic fallback when a key is exhausted.
               </p>
             </div>
@@ -3023,9 +3135,9 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
               disabled={testStatus === 'testing'}
               className={cn(
                 "w-full p-4 rounded-2xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2",
-                testStatus === 'success' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
-                testStatus === 'error' ? "bg-red-50 text-red-600 border border-red-100" :
-                "bg-stone-900 text-white hover:bg-stone-800"
+                testStatus === 'success' ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800" :
+                testStatus === 'error' ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800" :
+                "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-stone-200"
               )}
             >
               {testStatus === 'testing' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -3038,26 +3150,26 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
         </section>
 
         <section className="space-y-6">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Profile</h3>
+          <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Profile</h3>
           
           <div className="space-y-6">
-            <div className="flex items-center gap-6 p-4 bg-stone-50 rounded-3xl">
-              <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center text-4xl shadow-sm border border-stone-100">
+            <div className="flex items-center gap-6 p-4 bg-stone-50 dark:bg-stone-800/50 rounded-3xl border border-stone-100 dark:border-stone-800">
+              <div className="w-20 h-20 bg-white dark:bg-stone-900 rounded-2xl flex items-center justify-center text-4xl shadow-sm border border-stone-100 dark:border-stone-800">
                 {avatar}
               </div>
               <div className="flex-1 space-y-1">
-                <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Current Identity</div>
-                <div className="text-xl font-editorial italic text-stone-900">{name || 'Learner'}</div>
+                <div className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-widest">Current Identity</div>
+                <div className="text-xl font-editorial italic text-stone-900 dark:text-stone-100">{name || 'Learner'}</div>
                 <div className="flex items-center gap-3">
-                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Rank {profile?.rank || 'E5'}</div>
-                  <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">{profile?.streakCount || 0} Day Streak</div>
+                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full border border-amber-100 dark:border-amber-800">Rank {profile?.rank || 'E5'}</div>
+                  <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-800">{profile?.streakCount || 0} Day Streak</div>
                 </div>
-                <div className="text-[10px] text-stone-400 font-serif italic">{vocab.length} words mastered</div>
+                <div className="text-[10px] text-stone-400 dark:text-stone-500 font-serif italic">{vocab.length} words mastered</div>
               </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Choose Avatar</label>
+              <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Choose Avatar</label>
               <div className="flex flex-wrap gap-2">
                 {avatars.map(a => (
                   <button
@@ -3065,7 +3177,7 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                     onClick={() => setAvatar(a)}
                     className={cn(
                       "w-10 h-10 flex items-center justify-center rounded-xl text-xl transition-all",
-                      avatar === a ? "bg-stone-900 scale-110 shadow-lg" : "bg-stone-50 hover:bg-stone-100"
+                      avatar === a ? "bg-stone-900 dark:bg-stone-100 scale-110 shadow-lg" : "bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700"
                     )}
                   >
                     {a}
@@ -3076,48 +3188,48 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Display Name</label>
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Display Name</label>
                 <input 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full p-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-stone-200 outline-none transition-all"
+                  className="w-full p-4 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-stone-100 rounded-2xl border border-transparent focus:border-stone-200 dark:focus:border-stone-700 focus:ring-2 focus:ring-stone-200 dark:focus:ring-stone-700 outline-none transition-all"
                   placeholder="Enter your name..."
                 />
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Current Title</label>
-                <div className="w-full p-4 bg-stone-900 text-amber-400 rounded-2xl text-sm font-bold border border-stone-800 shadow-inner flex items-center justify-between">
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Current Title</label>
+                <div className="w-full p-4 bg-stone-900 dark:bg-stone-950 text-amber-400 rounded-2xl text-sm font-bold border border-stone-800 dark:border-stone-900 shadow-inner flex items-center justify-between">
                   {profile?.title || 'Novice Learner'}
                   <Trophy className="w-4 h-4" />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Rank</label>
-                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-900 text-sm font-bold border border-stone-100/50 flex items-center justify-between">
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Rank</label>
+                <div className="w-full p-4 bg-stone-50 dark:bg-stone-800 rounded-2xl text-stone-900 dark:text-stone-100 text-sm font-bold border border-stone-100/50 dark:border-stone-700/50 flex items-center justify-between">
                   {profile?.rank || 'E5'}
-                  <span className="text-[10px] text-stone-400 font-normal uppercase tracking-widest">Level</span>
+                  <span className="text-[10px] text-stone-400 dark:text-stone-500 font-normal uppercase tracking-widest">Level</span>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Words Learned</label>
-                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-900 text-sm font-bold border border-stone-100/50 flex items-center justify-between">
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Words Learned</label>
+                <div className="w-full p-4 bg-stone-50 dark:bg-stone-800 rounded-2xl text-stone-900 dark:text-stone-100 text-sm font-bold border border-stone-100/50 dark:border-stone-700/50 flex items-center justify-between">
                   {vocab.length}
-                  <Library className="w-4 h-4 text-stone-400" />
+                  <Library className="w-4 h-4 text-stone-400 dark:text-stone-500" />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Email Address</label>
-                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-400 text-sm font-medium border border-stone-100/50">
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Email Address</label>
+                <div className="w-full p-4 bg-stone-50 dark:bg-stone-800 rounded-2xl text-stone-400 dark:text-stone-500 text-sm font-medium border border-stone-100/50 dark:border-stone-700/50">
                   {user?.email || 'Guest User'}
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Daily Goal (Words)</label>
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Daily Goal (Words)</label>
                 <div className="flex gap-2">
                   {[3, 5, 10, 20].map(goal => (
                     <button
@@ -3125,7 +3237,7 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
                       onClick={() => setDailyGoal(goal)}
                       className={cn(
                         "flex-1 py-3 rounded-xl font-bold text-xs transition-all",
-                        dailyGoal === goal ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-400 hover:bg-stone-100"
+                        dailyGoal === goal ? "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900" : "bg-stone-50 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-700"
                       )}
                     >
                       {goal}
@@ -3135,30 +3247,55 @@ const Settings = ({ vocab }: { vocab: Vocabulary[] }) => {
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-mono text-stone-400 uppercase tracking-widest">Member Since</label>
-                <div className="w-full p-4 bg-stone-50 rounded-2xl text-stone-400 text-sm font-medium border border-stone-100/50">
+                <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">Member Since</label>
+                <div className="w-full p-4 bg-stone-50 dark:bg-stone-800 rounded-2xl text-stone-400 dark:text-stone-500 text-sm font-medium border border-stone-100/50 dark:border-stone-700/50">
                   {user?.metadata.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString() : 'Today (Guest)'}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-6 bg-stone-50 rounded-[2rem] border border-stone-100">
+            <div className="flex items-center justify-between p-6 bg-stone-50 dark:bg-stone-800 rounded-[2rem] border border-stone-100 dark:border-stone-800">
               <div className="space-y-1">
-                <div className="text-sm font-bold text-stone-900">Streak Notifications</div>
-                <div className="text-xs text-stone-500 font-serif italic">Get alerted 4 hours before your streak expires.</div>
+                <div className="text-sm font-bold text-stone-900 dark:text-stone-100">Streak Notifications</div>
+                <div className="text-xs text-stone-500 dark:text-stone-400 font-serif italic">Get alerted 4 hours before your streak expires.</div>
               </div>
               <button 
                 onClick={() => setNotificationsEnabled(!notificationsEnabled)}
                 className={cn(
                   "w-12 h-6 rounded-full transition-all relative p-1",
-                  notificationsEnabled ? "bg-stone-900" : "bg-stone-200"
+                  notificationsEnabled ? "bg-stone-900 dark:bg-stone-100" : "bg-stone-200 dark:bg-stone-700"
                 )}
               >
                 <motion.div 
                   animate={{ x: notificationsEnabled ? 24 : 0 }}
-                  className="w-4 h-4 bg-white rounded-full shadow-sm"
+                  className="w-4 h-4 bg-white dark:bg-stone-900 rounded-full shadow-sm"
                 />
               </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-xs font-mono text-stone-400 dark:text-stone-500 uppercase tracking-widest">App Theme</label>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'light', label: 'Light', icon: Sun },
+                  { id: 'dark', label: 'Dark', icon: Moon },
+                  { id: 'system', label: 'System', icon: Monitor }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTheme(t.id as any)}
+                    className={cn(
+                      "p-4 rounded-2xl border transition-all flex flex-col items-center gap-2",
+                      theme === t.id 
+                        ? "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 border-stone-900 dark:border-stone-100" 
+                        : "bg-stone-50 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border-stone-100 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700"
+                    )}
+                  >
+                    <t.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{t.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="pt-4">
@@ -3782,8 +3919,8 @@ const Chatbot = () => {
   };
 
   return (
-    <div className="w-full h-[calc(100vh-140px)] flex flex-col bg-[#efe7de] rounded-[2.5rem] shadow-xl overflow-hidden border border-stone-200">
-      <div className="px-4 py-4 bg-[#075e54] flex items-center justify-between text-white shrink-0">
+    <div className="w-full h-[calc(100vh-140px)] flex flex-col bg-[#efe7de] dark:bg-stone-950 rounded-[2.5rem] shadow-xl overflow-hidden border border-stone-200 dark:border-stone-800">
+      <div className="px-4 py-4 bg-[#075e54] dark:bg-stone-900 flex items-center justify-between text-white shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white" />
@@ -3803,7 +3940,7 @@ const Chatbot = () => {
 
       <div 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat"
+        className="flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] dark:bg-none dark:bg-stone-900 bg-repeat"
       >
         {messages.map((msg, idx) => (
           <motion.div
@@ -3813,40 +3950,40 @@ const Chatbot = () => {
             className={cn(
               "max-w-[85%] p-3 rounded-2xl text-sm shadow-sm relative",
               msg.role === 'user' 
-                ? "bg-[#dcf8c6] ml-auto rounded-tr-none text-stone-800" 
-                : "bg-white mr-auto rounded-tl-none text-stone-800"
+                ? "bg-[#dcf8c6] dark:bg-emerald-900/40 ml-auto rounded-tr-none text-stone-800 dark:text-emerald-50" 
+                : "bg-white dark:bg-stone-800 mr-auto rounded-tl-none text-stone-800 dark:text-stone-100"
             )}
           >
             <div className="whitespace-pre-wrap leading-relaxed">
               <ReactMarkdown>{msg.text}</ReactMarkdown>
             </div>
-            <div className="text-[9px] text-stone-400 text-right mt-1">
+            <div className="text-[9px] text-stone-400 dark:text-stone-500 text-right mt-1">
               {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           </motion.div>
         ))}
         {loading && (
-          <div className="bg-white mr-auto rounded-2xl rounded-tl-none p-3 shadow-sm">
+          <div className="bg-white dark:bg-stone-800 mr-auto rounded-2xl rounded-tl-none p-3 shadow-sm">
             <div className="flex gap-1">
-              <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce" />
-              <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-              <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+              <div className="w-1.5 h-1.5 bg-stone-300 dark:bg-stone-600 rounded-full animate-bounce" />
+              <div className="w-1.5 h-1.5 bg-stone-300 dark:bg-stone-600 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="w-1.5 h-1.5 bg-stone-300 dark:bg-stone-600 rounded-full animate-bounce [animation-delay:0.4s]" />
             </div>
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSend} className="p-4 bg-[#f0f0f0] flex items-center gap-2 shrink-0">
+      <form onSubmit={handleSend} className="p-4 bg-[#f0f0f0] dark:bg-stone-800 flex items-center gap-2 shrink-0">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a message"
-          className="flex-1 bg-white p-4 rounded-full text-sm outline-none shadow-sm"
+          className="flex-1 bg-white dark:bg-stone-900 p-4 rounded-full text-sm outline-none shadow-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-600"
         />
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="w-10 h-10 bg-[#128c7e] text-white rounded-full flex items-center justify-center shadow-md hover:bg-[#075e54] transition-all disabled:opacity-50"
+          className="w-10 h-10 bg-[#128c7e] dark:bg-stone-100 text-white dark:text-stone-900 rounded-full flex items-center justify-center shadow-md hover:bg-[#075e54] dark:hover:bg-stone-200 transition-all disabled:opacity-50"
         >
           <Send className="w-5 h-5" />
         </button>
@@ -3985,17 +4122,17 @@ const Notebook = () => {
     <div className="space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
-          <h2 className="text-4xl font-editorial italic text-stone-900 mb-2">Notebook</h2>
-          <p className="text-stone-500 font-serif italic">Your personal space for Japanese study notes.</p>
+          <h2 className="text-4xl font-editorial italic text-stone-900 dark:text-stone-100 mb-2">Notebook</h2>
+          <p className="text-stone-500 dark:text-stone-400 font-serif italic">Your personal space for Japanese study notes.</p>
         </div>
         <div className="flex gap-4 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 dark:text-stone-500" />
             <input 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search notes..."
-              className="w-full pl-10 pr-4 py-3 bg-white border border-stone-100 rounded-2xl text-sm focus:ring-2 focus:ring-stone-100 outline-none transition-all"
+              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-stone-900 border border-stone-100 dark:border-stone-800 rounded-2xl text-sm focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 outline-none transition-all text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
             />
           </div>
           <button 
@@ -4005,7 +4142,7 @@ const Notebook = () => {
               setNewTitle('');
               setNewContent('');
             }}
-            className="p-3 bg-stone-900 text-white rounded-2xl shadow-xl hover:bg-stone-800 transition-all flex items-center gap-2"
+            className="p-3 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-2xl shadow-xl hover:bg-stone-800 dark:hover:bg-stone-200 transition-all flex items-center gap-2"
           >
             <PlusCircle className="w-6 h-6" />
             <span className="hidden sm:inline font-bold text-xs uppercase tracking-widest">New Note</span>
@@ -4019,14 +4156,14 @@ const Notebook = () => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-2xl space-y-6 relative overflow-hidden"
+            className="bg-white dark:bg-stone-900 p-8 rounded-[2.5rem] border border-stone-100 dark:border-stone-800 shadow-2xl space-y-6 relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 w-full h-1 bg-stone-900" />
+            <div className="absolute top-0 left-0 w-full h-1 bg-stone-900 dark:bg-stone-100" />
             <div className="flex justify-between items-center">
-              <h3 className="text-xl font-editorial italic text-stone-900">
+              <h3 className="text-xl font-editorial italic text-stone-900 dark:text-stone-100">
                 {editingNoteId ? 'Edit Note' : 'Create New Note'}
               </h3>
-              <button onClick={() => setIsAdding(false)} className="text-stone-400 hover:text-stone-600">
+              <button onClick={() => setIsAdding(false)} className="text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
@@ -4034,25 +4171,25 @@ const Notebook = () => {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Give your note a title..."
-              className="w-full p-4 bg-stone-50 border-none rounded-2xl font-bold text-xl outline-none focus:ring-2 focus:ring-stone-100"
+              className="w-full p-4 bg-stone-50 dark:bg-stone-800 border-none rounded-2xl font-bold text-xl outline-none focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
             />
             <textarea 
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
               placeholder="Write your thoughts, grammar rules, or vocabulary here..."
               rows={8}
-              className="w-full p-4 bg-stone-50 border-none rounded-2xl font-serif italic outline-none focus:ring-2 focus:ring-stone-100 resize-none"
+              className="w-full p-4 bg-stone-50 dark:bg-stone-800 border-none rounded-2xl font-serif italic outline-none focus:ring-2 focus:ring-stone-100 dark:focus:ring-stone-700 resize-none text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600"
             />
             <div className="flex gap-4">
               <button 
                 onClick={() => setIsAdding(false)}
-                className="flex-1 py-4 bg-stone-50 text-stone-600 rounded-full font-bold hover:bg-stone-100 transition-colors"
+                className="flex-1 py-4 bg-stone-50 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-full font-bold hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleSaveNote}
-                className="flex-1 py-4 bg-stone-900 text-white rounded-full font-bold shadow-lg hover:bg-stone-800 transition-colors"
+                className="flex-1 py-4 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-full font-bold shadow-lg hover:bg-stone-800 dark:hover:bg-stone-200 transition-colors"
               >
                 {editingNoteId ? 'Update Note' : 'Save Note'}
               </button>
@@ -4063,16 +4200,16 @@ const Notebook = () => {
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <RotateCcw className="w-8 h-8 text-stone-200 animate-spin" />
+          <RotateCcw className="w-8 h-8 text-stone-200 dark:text-stone-800 animate-spin" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredNotes.length === 0 ? (
-            <div className="col-span-full text-center py-24 bg-white rounded-[3rem] border border-stone-50 shadow-sm">
-              <div className="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                <BookOpen className="w-10 h-10 text-stone-200" />
+            <div className="col-span-full text-center py-24 bg-white dark:bg-stone-900 rounded-[3rem] border border-stone-50 dark:border-stone-800 shadow-sm">
+              <div className="w-20 h-20 bg-stone-50 dark:bg-stone-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                <BookOpen className="w-10 h-10 text-stone-200 dark:text-stone-700" />
               </div>
-              <p className="text-stone-400 font-editorial italic text-xl">
+              <p className="text-stone-400 dark:text-stone-500 font-editorial italic text-xl">
                 {searchQuery ? "No notes match your search." : "Your notebook is empty. Start writing!"}
               </p>
             </div>
@@ -4084,15 +4221,16 @@ const Notebook = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={cn(
-                  "p-8 rounded-[2.5rem] border border-stone-100 shadow-sm hover:shadow-xl transition-all relative group flex flex-col", 
+                  "p-8 rounded-[2.5rem] border border-stone-100 dark:border-stone-800 shadow-sm hover:shadow-xl transition-all relative group flex flex-col", 
                   note.color || 'bg-white',
-                  note.isPinned && "ring-2 ring-stone-900 ring-offset-4"
+                  "dark:bg-stone-900 dark:border-stone-800",
+                  note.isPinned && "ring-2 ring-stone-900 dark:ring-stone-100 ring-offset-4 dark:ring-offset-stone-950"
                 )}
               >
                 <div className="absolute top-6 right-6 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                   <button 
                     onClick={() => togglePin(note)}
-                    className={cn("p-2 rounded-full transition-colors", note.isPinned ? "text-stone-900 bg-stone-100" : "text-stone-300 hover:text-stone-600 hover:bg-stone-50")}
+                    className={cn("p-2 rounded-full transition-colors", note.isPinned ? "text-stone-900 dark:text-stone-100 bg-stone-100 dark:bg-stone-800" : "text-stone-300 dark:text-stone-600 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800")}
                   >
                     <Pin className={cn("w-4 h-4", note.isPinned && "fill-current")} />
                   </button>
@@ -5729,7 +5867,23 @@ export default function App() {
     (window as any).setActiveTab = handleSetActiveTab;
     (window as any).logout = logout;
   }, [logout]);
+
+  useEffect(() => {
+    applyThemeToElement(profile?.theme || 'system');
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = () => {
+      if ((profile?.theme || 'system') === 'system') {
+        applyThemeToElement('system');
+      }
+    };
+    
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, [profile?.theme]);
+
   const [vocab, setVocab] = useState<Vocabulary[]>([]);
+  const [discoveredWords, setDiscoveredWords] = useState<DiscoveredWord[]>([]);
   const [todayVocabCount, setTodayVocabCount] = useState(0);
   const [streakWarning, setStreakWarning] = useState(false);
 
@@ -5764,8 +5918,9 @@ export default function App() {
       const guestProfile = localStorage.getItem('komorebi_profile');
       const guestVocab = localStorage.getItem('komorebi_vocab');
       const guestNotes = localStorage.getItem('komorebi_notes');
+      const guestDiscovered = localStorage.getItem('discovered_words');
 
-      if (guestProfile || guestVocab || guestNotes) {
+      if (guestProfile || guestVocab || guestNotes || guestDiscovered) {
         console.log("Migrating guest data...");
         
         // 1. Migrate Profile (merge XP, streak, etc.)
@@ -5790,8 +5945,6 @@ export default function App() {
           const vocabRef = collection(db, 'users', user.uid, 'vocabularies');
           for (const item of v) {
             const { id, ...data } = item;
-            // Check if already exists? (maybe by word/meaning)
-            // For simplicity, just add all.
             await addDoc(vocabRef, {
               ...data,
               createdAt: data.createdAt?.seconds ? new Timestamp(data.createdAt.seconds, data.createdAt.nanoseconds) : Timestamp.now()
@@ -5812,10 +5965,23 @@ export default function App() {
           }
         }
 
+        // 4. Migrate Discovered Words
+        if (guestDiscovered) {
+          const d = JSON.parse(guestDiscovered);
+          const discRef = collection(db, 'users', user.uid, 'discovered_words');
+          for (const item of d) {
+            await addDoc(discRef, {
+              ...item,
+              createdAt: Timestamp.now()
+            });
+          }
+        }
+
         // Clear guest data
         localStorage.removeItem('komorebi_profile');
         localStorage.removeItem('komorebi_vocab');
         localStorage.removeItem('komorebi_notes');
+        localStorage.removeItem('discovered_words');
         localStorage.removeItem('komorebi_demo');
         console.log("Migration complete.");
       }
@@ -5828,6 +5994,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setIsDemo(false);
+        localStorage.removeItem('komorebi_demo');
+      }
       if (!currentUser && !isDemo) {
         setLoading(false);
       }
@@ -5892,9 +6062,19 @@ export default function App() {
       setLoading(false);
     });
 
+    const discoveredRef = collection(db, 'users', user.uid, 'discovered_words');
+    const dq = query(discoveredRef, orderBy('createdAt', 'desc'));
+    const unsubDiscovered = onSnapshot(dq, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DiscoveredWord));
+      setDiscoveredWords(list);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `users/${user.uid}/discovered_words`);
+    });
+
     return () => {
       unsubProfile();
       unsubVocab();
+      unsubDiscovered();
     };
   }, [user]);
 
@@ -6010,6 +6190,21 @@ export default function App() {
     return () => window.removeEventListener('notes_update', loadNotes);
   }, [isDemo, user]);
 
+  // Demo mode discovered words
+  useEffect(() => {
+    if (!isDemo || user) return;
+    const loadDiscovered = () => {
+      const d = JSON.parse(localStorage.getItem('discovered_words') || '[]');
+      setDiscoveredWords(d.map((item: any) => ({
+        ...item,
+        createdAt: item.createdAt?.seconds ? new Timestamp(item.createdAt.seconds, item.createdAt.nanoseconds) : Timestamp.now()
+      })));
+    };
+    loadDiscovered();
+    window.addEventListener('discovered_update', loadDiscovered);
+    return () => window.removeEventListener('discovered_update', loadDiscovered);
+  }, [isDemo, user]);
+
   // Safety timeout
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -6080,7 +6275,20 @@ export default function App() {
 
   // Default to demo mode if not logged in
   return (
-    <AuthContext.Provider value={{ user, profile, setProfile, loading, signIn, logout, setDemoMode, isDemo, vocab, setActiveTab: handleSetActiveTab }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      profile, 
+      setProfile, 
+      loading, 
+      signIn, 
+      logout, 
+      setDemoMode, 
+      isDemo, 
+      vocab, 
+      discoveredWords,
+      setDiscoveredWords,
+      setActiveTab: handleSetActiveTab 
+    }}>
       <TTSProvider>
         <ErrorBoundary>
           {!user && !isDemo ? (
@@ -6152,7 +6360,7 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f2ed] pb-20 md:pb-0 md:pl-56">
+    <div className="min-h-screen bg-[#f5f2ed] dark:bg-[#1c1917] pb-20 md:pb-0 md:pl-56 transition-colors duration-300">
       <AnimatePresence>
         {isNewUser && <NamePrompt onSave={handleSaveName} />}
       </AnimatePresence>
@@ -6205,14 +6413,14 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
       </AnimatePresence>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-56 bg-white border-r border-stone-100 flex-col fixed inset-y-0 left-0 z-50">
+      <aside className="hidden md:flex w-56 bg-white dark:bg-[#1c1917] border-r border-stone-100 dark:border-stone-800 flex-col fixed inset-y-0 left-0 z-50 transition-colors duration-300">
             <div className="p-6 flex items-center gap-2">
-              <div className="w-8 h-8 bg-stone-900 rounded-lg flex items-center justify-center text-white font-bold shrink-0 text-sm">木</div>
-              <span className="font-serif font-bold text-lg tracking-tight">Komorebi</span>
+              <div className="w-8 h-8 bg-stone-900 dark:bg-stone-100 rounded-lg flex items-center justify-center text-white dark:text-stone-900 font-bold shrink-0 text-sm">木</div>
+              <span className="font-serif font-bold text-lg tracking-tight text-stone-900 dark:text-stone-100">Komorebi</span>
             </div>
             
             <nav className="flex-1 px-3 space-y-1 mt-2">
-              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">Main</div>
+              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">Main</div>
               {[
                 { id: 'dashboard', icon: Flame, label: 'Home' },
                 { id: 'kana', icon: Pencil, label: 'Writing' },
@@ -6225,23 +6433,23 @@ const AppContent = ({ activeTab, setActiveTab, todayVocabCount, vocab, logout, s
                   className={cn(
                     "w-full flex items-center gap-3 p-3 rounded-xl transition-all group relative",
                     activeTab === item.id 
-                      ? "bg-stone-900 text-white shadow-lg shadow-stone-200" 
-                      : "text-stone-400 hover:bg-stone-50 hover:text-stone-900"
+                      ? "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-lg shadow-stone-200 dark:shadow-none" 
+                      : "text-stone-400 dark:text-stone-500 hover:bg-stone-50 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100"
                   )}
                 >
-                  <item.icon className={cn("w-4 h-4 transition-transform group-hover:scale-110", activeTab === item.id ? "text-white" : "text-stone-400 group-hover:text-stone-900")} />
+                  <item.icon className={cn("w-4 h-4 transition-transform group-hover:scale-110", activeTab === item.id ? "text-white dark:text-stone-900" : "text-stone-400 dark:text-stone-500 group-hover:text-stone-900 dark:group-hover:text-stone-100")} />
                   <span className="font-medium text-xs tracking-wide">{item.label}</span>
                   {activeTab === item.id && (
                     <motion.div 
                       layoutId="activeTabDesktop"
-                      className="absolute inset-0 bg-stone-900 rounded-xl -z-10"
+                      className="absolute inset-0 bg-stone-900 dark:bg-stone-100 rounded-xl -z-10"
                       transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                     />
                   )}
                 </button>
               ))}
 
-              <div className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">More</div>
+              <div className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">More</div>
               {[
                 { id: 'vocabList', icon: Library, label: 'Vocabulary' },
                 { id: 'flashcards', icon: Layers, label: 'Review' },

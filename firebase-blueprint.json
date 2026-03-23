@@ -39,7 +39,8 @@
             "count": { "type": "integer" }
           }
         },
-        "role": { "type": "string", "enum": ["admin", "user", "client"] }
+        "role": { "type": "string", "enum": ["admin", "user", "client"] },
+        "theme": { "type": "string", "enum": ["light", "dark", "system"] }
       },
       "required": ["uid", "email"]
     },
@@ -72,6 +73,18 @@
         "isPinned": { "type": "boolean" }
       },
       "required": ["title", "content", "createdAt", "updatedAt"]
+    },
+    "DiscoveredWord": {
+      "title": "DiscoveredWord",
+      "description": "Words discovered by the user in the dictionary",
+      "type": "object",
+      "properties": {
+        "jp": { "type": "string" },
+        "ro": { "type": "string" },
+        "en": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jp", "ro", "en"]
     }
   },
   "firestore": {
@@ -86,6 +99,10 @@
     "/users/{userId}/notes/{noteId}": {
       "schema": "Note",
       "description": "User's personal notes"
+    },
+    "/users/{userId}/discovered_words/{wordId}": {
+      "schema": "DiscoveredWord",
+      "description": "Words discovered in the dictionary"
     }
   }
 }

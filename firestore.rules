@@ -47,6 +47,14 @@
 //   - updatedAt: timestamp (required)
 //   - color: string
 //
+// Collection: users/{userId}/discovered_words
+// Document ID: {wordId}
+// Fields:
+//   - jp: string (required)
+//   - ro: string
+//   - en: string (required)
+//   - createdAt: timestamp
+//
 // ===============================================================
 
 rules_version = '2';
@@ -75,7 +83,7 @@ service cloud.firestore {
         'uid', 'displayName', 'email', 'streakCount', 'lastActiveDate', 
         'dailyGoalMet', 'xp', 'rank', 'title', 'dailyGoal', 'avatar', 
         'ownedAvatars', 'preferredTTS', 'notificationsEnabled', 'achievements', 
-        'pinnedAchievements', 'apiKeys', 'quoteCache', 'quoteStats', 'role'
+        'pinnedAchievements', 'apiKeys', 'quoteCache', 'quoteStats', 'role', 'theme'
       ];
       return data.keys().hasAll(['uid', 'email']) &&
              data.keys().hasOnly(allowedFields) &&
@@ -98,7 +106,8 @@ service cloud.firestore {
              (!('apiKeys' in data) || data.apiKeys is list) &&
              (!('quoteCache' in data) || data.quoteCache is list) &&
              (!('quoteStats' in data) || data.quoteStats is map) &&
-             (!('role' in data) || data.role in ['admin', 'user', 'client']);
+             (!('role' in data) || data.role in ['admin', 'user', 'client']) &&
+             (!('theme' in data) || data.theme in ['light', 'dark', 'system']);
     }
 
     function isValidVocab(data) {
@@ -128,6 +137,16 @@ service cloud.firestore {
              data.updatedAt is timestamp;
     }
 
+    function isValidDiscoveredWord(data) {
+      let allowedFields = ['jp', 'ro', 'en', 'createdAt'];
+      return data.keys().hasAll(['jp', 'en']) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.jp is string && data.jp.size() <= 100 &&
+             data.en is string && data.en.size() <= 500 &&
+             (!('ro' in data) || (data.ro is string && data.ro.size() <= 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -148,6 +167,13 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidNote(request.resource.data);
         allow update: if isOwner(userId) && isValidNote(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /discovered_words/{wordId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidDiscoveredWord(request.resource.data);
+        allow update: if isOwner(userId) && isValidDiscoveredWord(request.resource.data);
         allow delete: if isOwner(userId);
       }
     }
